@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "ops_macros.html" as ops %}
+{% block title %}CyberCheck · Bot{% endblock %}
+{% block page_id %}bot{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('ops.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ asset('ops.js') }}" defer></script>{% endblock %}
+{% block flash %}{% if error %}{{ ui.flash(error, "error") }}{% endif %}{% endblock %}
+
+{% macro chat_pill(s) -%}{%- set l = chat_look(s) -%}{{ ui.pill(l[0], l[1], l[2], title="Chat status") }}{%- endmacro %}
+{% macro said_pill(v) -%}{%- set l = verdict_look(v) -%}{{ ui.pill(l[0], l[1], l[2], title="What the bot replied") }}{%- endmacro %}
+
+{#- One status button. Blocking asks first with JS (a plain POST without it: the chat can be allowed again). -#}
+{% macro status_form(chat_id, value, label, kind="", name="") -%}
+<form method="post" action="/bot/chat/{{ chat_id }}/status" class="inline">
+  <input type="hidden" name="status" value="{{ value }}">
+  {%- if value == 'blocked' %}
+  {{ ui.button(label, kind=kind, small=True, confirm="Block " ~ (name or chat_id) ~ "?", confirm_ok="Block this chat", confirm_detail="The bot ignores its messages until you allow it again.") }}
+  {%- else %}
+  {{ ui.button(label, kind=kind, small=True) }}
+  {%- endif %}
+</form>
+{%- endmacro %}
+
+{% macro chat_cell(c) -%}
+<span class="ops-chat-title">{{ c.title or 'untitled chat' }}</span>{% if c.username %} <span class="muted">@{{ c.username }}</span>{% endif %}
+<span class="ops-sub dom">{{ c.chat_id }}</span>
+{%- endmacro %}
+
+{% block body %}
+{{ ui.page_head("Telegram bot", sub="People forward scam messages to the bot. It checks the domains, replies with what CyberCheck knows, and adds new suspicious ones for review. Message text is never stored.") }}
+
+{%- set n_chats = (counts.pending or 0) + (counts.allowed or 0) + (counts.blocked or 0) %}
+{% call ops.tiles("Bot in numbers") %}
+  {{ ops.tile("chats waiting for approval", counts.pending, "alert", tone="amber" if counts.pending else None, href="#pending" if counts.pending else None) }}
+  {{ ops.tile("chats allowed", counts.allowed, "shield", total=n_chats if n_chats else None, tone="teal") }}
+  {{ ops.tile("chats blocked", counts.blocked, "unknown", total=n_chats if n_chats else None) }}
+  {{ ops.tile("checks, last 24 h", stats.checks_24h or 0, "pulse") }}
+  {{ ops.tile("domains forwarded, 30 days", stats.domains_30d or 0, "arrow-up") }}
+  {{ ops.tile("new suspicious domains added, 30 days", stats.new_30d or 0, "danger", total=(stats.domains_30d or 0) if stats.new_30d else None, tone="amber" if stats.new_30d else None) }}
+  {{ ops.tile("domains with source bot", stats.stored_by_bot or 0, "list") }}
+{% endcall %}
+
+<div class="ops-strip" role="group" aria-label="Bot process">
+  {%- if status and status.value.ok == false %}{{ ui.health_pill('error', 'error') }}
+  {%- elif status %}{{ ui.health_pill('ok', 'running') }}
+  {%- else %}{{ ui.health_pill('unknown', 'no status yet') }}{% endif %}
+  <span class="ops-strip-text">
+    {%- if status %}last status {{ ui.ago(status.updated_at) }}{% if status.value.username %} as @{{ status.value.username }}{% endif %}{% if status.value.ok == false %}: <span class="tone-red">{{ status.value.error }}</span>{% endif %}
+    {%- else %}Is the bot service running? Start it with <code>docker compose --profile bot up -d</code>{% endif -%}
+  </span>
+  <dl class="ops-facts">
+    <div><dt>Token</dt><dd>{{ 'token set' if token_set else 'token not set (TELEGRAM_BOT_TOKEN)' }}</dd></div>
+    <div><dt>Per chat, per UTC day</dt><dd>{{ daily_limit }} checks{% if ai_limit is not none %}, {{ ai_limit }} AI explanations{% endif %}</dd></div>
+    <div><dt>Kept</dt><dd>domains for 30 days, no message text</dd></div>
+  </dl>
+</div>
+
+{% call ui.panel("Waiting for approval", id="pending", sub="the bot answers these chats only after you allow them", flush=True, class_="ops-pending" if pending else "") %}
+  {% call ui.table(["Chat", "Type", "First seen", "Last seen", ("Messages", "num"), "Decision"], label="Chats waiting for approval") %}
+    {% for c in pending %}
+    <tr>
+      <td class="ops-card-title">{{ chat_cell(c) }}</td>
+      <td class="muted" data-label="Type">{{ c.chat_type or '' }}</td>
+      <td class="nowrap" data-label="First seen">{{ ui.ago(c.first_seen) }}</td>
+      <td class="nowrap" data-label="Last seen">{{ ui.ago(c.last_seen) }}</td>
+      <td class="num" data-label="Messages">{{ c.total_messages }}</td>
+      <td class="actions">
+        {{ status_form(c.chat_id, 'allowed', 'Allow this chat', 'primary') }}
+        {{ status_form(c.chat_id, 'blocked', 'Block this chat', 'danger', c.title or c.username) }}
+      </td>
+    </tr>
+    {% else %}{{ ui.empty_row(6, "No chats are waiting. Anyone new who messages the bot shows up here.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+
+{% call ui.panel("Chats", id="chats", sub="allowed and blocked, most recent first", flush=True) %}
+  {% if others | length > 8 %}
+  <div class="ops-tools js-only" hidden>
+    <div class="field field--inline">
+      <label for="chats-filter">Filter chats</label>
+      <input class="input" type="search" id="chats-filter" placeholder="title, username or id" autocomplete="off" data-filter-for="chat-rows" data-search>
+    </div>
+    <span class="ops-count" data-filter-count="chat-rows" aria-live="polite"></span>
+  </div>
+  {% endif %}
+  {% call ui.table(["Chat", "Type", "Status", "First seen", "Last seen", ("Checks today", "num"), ("AI today", "num"), ("Checks", "num"), ("Domains", "num"), "Action"], label="Chats", id="chat-rows") %}
+    {% for c in others %}
+    <tr>
+      <td>{{ chat_cell(c) }}</td>
+      <td class="muted">{{ c.chat_type or '' }}</td>
+      <td>{{ chat_pill(c.effective) }}
+        {%- if c.env %}<span class="ops-sub">in TELEGRAM_ALLOWED_CHATS{% if c.effective == 'blocked' %}, blocked here{% endif %}</span>{% endif %}
+        {%- if c.status_by %}<span class="ops-sub">by {{ c.status_by }}{% if c.status_changed_at %} {{ ui.ago(c.status_changed_at) }}{% endif %}</span>{% endif %}</td>
+      <td class="nowrap">{{ ui.ago(c.first_seen) }}</td>
+      <td class="nowrap">{{ ui.ago(c.last_seen) }}</td>
+      <td class="num">{{ c.today_messages }}</td>
+      <td class="num">{{ c.today_ai }}</td>
+      <td class="num">{{ c.total_messages }}</td>
+      <td class="num">{{ c.total_domains }}</td>
+      <td class="actions">
+        {% if c.effective != 'allowed' %}{{ status_form(c.chat_id, 'allowed', 'Allow this chat') }}{% endif %}
+        {% if c.effective != 'blocked' %}{{ status_form(c.chat_id, 'blocked', 'Block this chat', '', c.title or c.username) }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    {% for chat_id in env_unseen %}
+    <tr>
+      <td><span class="dom">{{ chat_id }}</span></td>
+      <td></td>
+      <td>{{ chat_pill('allowed') }}<span class="ops-sub">in TELEGRAM_ALLOWED_CHATS, not seen yet</span></td>
+      <td><span class="muted">-</span></td><td><span class="muted">-</span></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td>
+      <td class="actions">{{ status_form(chat_id, 'blocked', 'Block this chat') }}</td>
+    </tr>
+    {% endfor %}
+    {% if not others and not env_unseen %}{{ ui.empty_row(10, "No chats yet. Anyone who messages the bot shows up as waiting for approval." if not pending else "No allowed or blocked chats yet. Decide on the waiting chats above.") }}{% endif %}
+  {% endcall %}
+{% endcall %}
+
+<div class="grid-2">
+  {% call ui.panel("Recently forwarded domains", id="recent", flush=True) %}
+    {% call ui.table(["When", "Chat", "Hostname", "Bot said", "Now"], label="Recently forwarded domains", tall=True) %}
+      {% for r in recent %}
+      <tr>
+        <td class="nowrap">{{ ui.ago(r.at) }}</td>
+        <td class="muted">{{ r.title or r.chat_id }}</td>
+        <td>{% if r.domain_id %}<a class="dom" href="/domain/{{ r.domain_id }}">{{ r.host }}</a>{% else %}<span class="dom">{{ r.host }}</span>{% endif %}</td>
+        <td>{{ said_pill(r.verdict) }}</td>
+        <td class="ops-checks">{% if r.domain_id %}{{ ui.tier_pill(r.tier) }} {{ ui.status_pill(r.domain_status) }}{% else %}<span class="muted">not stored</span>{% endif %}</td>
+      </tr>
+      {% else %}{{ ui.empty_row(5, "Nothing forwarded yet. Allowed chats can forward a scam message or paste a link.") }}{% endfor %}
+    {% endcall %}
+  {% endcall %}
+
+  {% call ui.panel("Most forwarded, 30 days", id="top", flush=True) %}
+    {% call ui.table(["Domain", ("Times", "num"), ("Chats", "num"), "Last", "Now"], label="Most forwarded domains, 30 days") %}
+      {% for t in top %}
+      <tr>
+        <td class="dom">{% if t.domain_id %}<a href="/domain/{{ t.domain_id }}">{{ t.reg }}</a>{% else %}{{ t.reg }}{% endif %}</td>
+        <td class="num">{{ t.n }}</td>
+        <td class="num">{{ t.chats }}</td>
+        <td class="nowrap">{{ ui.ago(t.last_at) }}</td>
+        <td class="ops-checks">{% if t.domain_id %}{{ ui.tier_pill(t.tier) }} {{ ui.status_pill(t.domain_status) }}{% else %}<span class="muted">not stored</span>{% endif %}</td>
+      </tr>
+      {% else %}{{ ui.empty_row(5, "Nothing forwarded in the last 30 days.") }}{% endfor %}
+    {% endcall %}
+  {% endcall %}
+</div>
+{% endblock %}

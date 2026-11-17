@@ -1,0 +1,290 @@
+{#- Triage macros: domain rows, the evidence pane of /review, and evidence blocks shared with domain.html.
+    Every value is autoescaped (hostnames, titles, URLs, AI text and CT strings come from attackers). Never
+    |safe or Markup. Phishing URLs are text (ui.url_text), never links. Styles: static/triage.css. -#}
+{% import "_ui.html" as ui %}
+
+{#- Kept for overview.html, bot_index.html and czds_index.html: the design-system pills. -#}
+{% macro tier_pill(tier) -%}{{ ui.tier_pill(tier) }}{%- endmacro %}
+{% macro status_pill(status) -%}{{ ui.status_pill(status) }}{%- endmacro %}
+
+{#- AI page verdict -> badge kind (icon and tone): phishing = red triangle, suspicious = amber !, benign or parked =
+    green shield, a failed check or no verdict = grey x. -#}
+{% set VKIND = {"phishing": "danger", "suspicious": "alert", "benign": "protected", "parked": "protected", "error": "unknown"} %}
+{% set VNAME = {"phishing": "Phishing", "suspicious": "Suspicious", "benign": "Benign", "parked": "Parked", "error": "Check failed"} %}
+
+{#- One domain as a table row (overview live feed; 7 columns: seen, tier, score, hostname, brand, checks, status).
+    The <tr data-id="N"> form is what the integration tests and the live feed script look for. -#}
+{% macro domain_row(r) -%}
+<tr data-id="{{ r.id }}">
+  <td class="muted nowrap">{{ ui.ago(r.first_seen) }}</td>
+  <td>{{ ui.tier_pill(r.tier) }}</td>
+  <td class="num">{{ r.score }}{% if r.final_score is not none %} <span class="muted" title="Combined score">/ {{ r.final_score }}</span>{% endif %}</td>
+  <td class="dom"><a href="/domain/{{ r.id }}">{{ r.hostnames[0] if r.hostnames else r.registered_domain }}</a>{% if r.unicode_domain %}<span class="dom-alt">{{ r.unicode_domain }}</span>{% endif %}</td>
+  <td>{{ r.brand_id or '' }}</td>
+  <td>{% if r.live_state and r.live_state != 'unknown' %}{{ ui.live_pill(r.live_state) }} {% endif %}{% if r.ai_verdict %}{{ ui.verdict_pill(r.ai_verdict, r.ai_confidence) }}{% endif %}</td>
+  <td>{{ ui.status_pill(r.status) }}</td>
+</tr>
+{%- endmacro %}
+
+{#- A small score ring (thin arc in the tier's colour, the number in the middle). Decorative: the number is text. -#}
+{% macro score_ring(value, tone="amber", title=None) -%}
+{%- set g = gauge_geom(value, 100) -%}
+<span class="ring ring--{{ tone }}"{% if title %} title="{{ title }}"{% endif %}>
+  <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><path class="ring-track" d="{{ g.track }}" fill="none" stroke-width="6" stroke-linecap="round"/>{% if g.arc %}<path class="ring-arc" d="{{ g.arc }}" fill="none" stroke-width="7" stroke-linecap="round"/>{% endif %}</svg>
+  <span class="ring-n">{{ value if value is not none else '-' }}</span>
+</span>
+{%- endmacro %}
+
+{#- /domains: 8 columns (seen, tier, score, combined, domain, brand, page and AI, status). -#}
+{% macro list_row(r) -%}
+<tr data-id="{{ r.id }}">
+  <td class="muted nowrap c-seen">{{ ui.ago(r.first_seen) }}</td>
+  <td class="c-tier">{{ ui.tier_pill(r.tier) }}</td>
+  <td class="num c-score" data-label="score">{{ r.score }}</td>
+  <td class="num c-final" data-label="combined">{% if r.final_score is not none %}<span class="c-final-n c-final-n--{{ 'red' if r.final_score >= 80 else ('amber' if r.final_score >= 50 else 'muted') }}">{{ r.final_score }}</span>{% else %}<span class="muted" title="Not computed yet">-</span>{% endif %}</td>
+  <td class="dom-cell"><a class="dom" href="/domain/{{ r.id }}">{{ r.hostnames[0] if r.hostnames else r.registered_domain }}</a>{% if r.unicode_domain %}<span class="dom-alt">{{ r.unicode_domain }}</span>{% endif %}</td>
+  <td class="c-brand">{{ r.brand_id or '' }}</td>
+  <td class="signals">{% if r.live_state and r.live_state != 'unknown' %}{{ ui.live_pill(r.live_state) }}{% endif %}{% if r.ai_verdict %}{{ ui.verdict_pill(r.ai_verdict, r.ai_confidence) }}{% endif %}</td>
+  <td class="c-status">{{ ui.status_pill(r.status) }}</td>
+</tr>
+{%- endmacro %}
+
+{#- /review queue: one glass list item (a grid row of the queue table). The link opens the domain page without
+    JS; triage.js loads the evidence pane instead. `selected` marks the row whose evidence the page shows. -#}
+{% macro queue_row(r, selected=None, qs="") -%}
+{%- set host = r.hostnames[0] if r.hostnames else r.registered_domain -%}
+{%- set sc = r.final_score if r.final_score is not none else r.score -%}
+<tr data-id="{{ r.id }}">
+  <td class="q-score num">{{ score_ring(sc, 'red' if r.tier == 'high' else 'amber', 'Combined score' if r.final_score is not none else 'Domain-name score') }}</td>
+  <td class="q-main">
+    <a class="q-link dom" href="/domain/{{ r.id }}" data-evidence="/review/evidence/{{ r.id }}" data-select="?{{ qs }}{{ '&' if qs }}id={{ r.id }}"{% if r.id == selected %} aria-current="true"{% endif %}>{{ host }}</a>
+    {%- if r.unicode_domain %}<span class="dom-alt">{{ r.unicode_domain }}</span>{% endif %}
+    <span class="q-meta">{{ ui.tier_pill(r.tier) }}{% if r.live_state == 'live' %}{{ ui.live_pill('live') }}{% endif %}{% if r.ai_verdict %}{{ ui.verdict_pill(r.ai_verdict, r.ai_confidence) }}{% endif %}{% if r.brand_id %}<span class="q-brand">{{ r.brand_id }}</span>{% endif %}</span>
+  </td>
+  <td class="q-seen muted nowrap">{{ ui.ago(r.first_seen) }}</td>
+</tr>
+{%- endmacro %}
+
+{#- ---- evidence blocks (used by the evidence pane and domain.html) ------------------------------------ -#}
+
+{#- The domain name in monospace, for rn/m and l/1 look-alikes, under the light headline. -#}
+{% macro exact_name(name) -%}
+<p class="exact"><span class="exact-l">Exact spelling</span> <span class="dom dom--exact">{{ name }}</span></p>
+{%- endmacro %}
+
+{% macro asks_list(asks, empty_text="Nothing: the snapshots show no password, code or card fields.") -%}
+{%- if asks -%}
+<ul class="asks">
+  {%- for a in asks %}
+  {%- set red = a.key != 'personal_info' %}
+  <li class="ask ask--{{ 'red' if red else 'amber' }}">{{ ui.icon('danger' if red else 'alert', 'ask-ico') }}<span class="ask-label">{{ a.label }}</span><span class="ask-src">{% if a.form and a.ai %}form fields and AI{% elif a.form %}form fields{% else %}AI only{% endif %}</span></li>
+  {%- endfor %}
+</ul>
+{%- else -%}<p class="ev-none ev-none--ok">{{ ui.icon('shield', 'ask-ico ask-ico--ok') }}<span>{{ empty_text }}</span></p>{%- endif -%}
+{%- endmacro %}
+
+{#- The AI page verdict as a glass badge with its icon, then the explanation (AI text: escaped, shown as prose). -#}
+{% macro ai_block(d, ai) -%}
+{%- set v = d.ai_verdict -%}
+{%- set kind = VKIND.get(v, 'unknown') -%}
+<div class="ai-verdict ai-verdict--{{ kind }}">
+  <div class="ai-head">
+    {{ ui.badge(kind, ("AI verdict: " ~ v) if v else "No AI verdict", size="lg", class_="ai-badge") }}
+    <div class="ai-head-text">
+      {%- if v %}
+      <p class="ai-name">AI {{ v }}{% if d.ai_confidence is not none %}<span class="of"> {{ '%.0f' % (d.ai_confidence * 100) }}% sure</span>{% endif %}</p>
+      {%- else %}
+      <p class="ai-name ai-name--none">Not judged yet</p>
+      {%- endif %}
+      {%- if d.ai_brand %}<p class="ai-sub">imitates <span class="ai-brand">{{ d.ai_brand }}</span></p>{% endif %}
+    </div>
+  </div>
+  {% if ai and ai.explanation %}<p class="ai-why"><span class="visually-hidden">AI explanation: </span>{{ ai.explanation }}</p>
+  {% elif v %}<p class="muted ev-none">No explanation was stored with this verdict.</p>
+  {% else %}<p class="muted ev-none">No AI page verdict yet. The judge looks at snapshots that loaded, within a few minutes of the fetch.</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{#- Points that add up to a score: [{points, why}]. -#}
+{% macro points_table(reasons, total, total_label, signed=True, label=None) -%}
+<table class="data points"{% if label %} aria-label="{{ label }}"{% endif %}>
+  <tbody>
+  {%- for r in reasons or [] %}
+    <tr><td class="num pts{{ ' pts--neg' if (r.points or 0) < 0 }}">{{ ('%+d' % r.points) if signed else ('+%d' % r.points) }}</td><td class="sans">{{ r.why }}</td></tr>
+  {%- endfor %}
+    <tr class="points-total"><td class="num"><b>{{ total }}</b></td><td><b>{{ total_label }}</b>{% if caller is defined %} {{ caller() }}{% endif %}</td></tr>
+  </tbody>
+</table>
+{%- endmacro %}
+
+{#- The combined score: a small gauge ring (green to red as it rises) next to the points that make it up. -#}
+{% macro score_block(d) -%}
+<div class="score">
+{%- if d.final_score is not none -%}
+  {{ ui.gauge(d.final_score, 100, "domain + page + AI", shown_total="100", size="sm") }}
+  <div class="score-list">
+  {% call points_table(d.final_reasons, d.final_score, "combined score", label="Combined score breakdown") %}{% if d.final_score_at %}<span class="muted">{{ ui.ago(d.final_score_at) }}</span>{% endif %}{% endcall %}
+  </div>
+{%- else -%}
+  {{ ui.gauge(d.score, 100, "domain name only", shown_total="100", size="sm") }}
+  <div class="score-list">
+  <p class="muted ev-none">No combined score yet: it is worked out once the page has been fetched or judged.</p>
+  </div>
+{%- endif -%}
+</div>
+{%- endmacro %}
+
+{% macro why_block(d) -%}
+{% call points_table(d.reasons, d.score, "domain score", signed=False, label="Why it was flagged") %}{% if d.page_score is not none %}<span class="muted">page {{ d.page_score }}</span>{% endif %}{% endcall %}
+{%- endmacro %}
+
+{#- What the blocklist would list if this domain is confirmed (shown before the reviewer confirms). -#}
+{% macro blocklist_block(d, bl_scope) -%}
+{%- if d.blocklisted -%}
+<p class="bl-state bl-state--on">{{ ui.icon('danger', 'bl-ico tone-red') }}<span>On the blocklist{% if d.blocklist_expires_at %}, listed until {{ d.blocklist_expires_at | utc('%Y-%m-%d') }}{% endif %}.</span></p>
+{%- elif d.blocklist_excluded -%}
+<p class="bl-state">{{ ui.icon('unknown', 'bl-ico tone-muted') }}<span>Kept off the blocklist: excluded by {{ d.blocklist_excluded_by or '?' }}.</span></p>
+{%- else -%}
+<p class="bl-state muted">{{ ui.icon('dot', 'bl-ico') }}<span>Not on the blocklist.</span></p>
+{%- endif %}
+{%- if bl_scope and not d.blocklisted and d.status != 'false_positive' and d.status != 'benign' %}
+<p class="bl-scope">if confirmed: {% if bl_scope.wildcard %}the whole domain <span class="dom">{{ d.registered_domain }}</span> and everything under it{% else %}only these hostnames: <span class="dom">{{ bl_scope.hosts | join(', ') or 'none' }}</span> ({{ bl_scope.why }}){% endif %}</p>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro hostnames_block(d, limit=None) -%}
+{%- set hs = d.hostnames or [] -%}
+<ul class="hosts">
+  {%- for h in (hs[:limit] if limit else hs) %}<li class="dom">{{ h }}</li>{% endfor %}
+</ul>
+{%- if limit and hs | length > limit %}<p class="muted">{{ hs | length - limit }} more on the domain page.</p>{% endif -%}
+{%- endmacro %}
+
+{#- Screenshot area: the newest desktop capture in a large rounded browser-style frame (its URL as text, never a
+    link), the newest mobile capture beside it in a phone-shaped frame. -#}
+{% macro shots_block(ev) -%}
+{%- if ev.shot -%}
+{%- set s = ev.shot -%}
+<div class="ev-shots{{ ' ev-shots--two' if ev.shot_mobile }}">
+  <div class="frame{{ ' frame--phone' if s.user_agent_profile == 'mobile' }}">
+    <div class="frame-bar" aria-hidden="true"><span class="frame-dots"><i></i><i></i><i></i></span><span class="frame-url">{{ s.final_url or s.url }}</span></div>
+    {{ ui.shot(s.id, "Screenshot of " ~ (s.final_url or s.url), caption=((s.user_agent_profile or 'desktop') | capitalize) ~ " capture, " ~ (s.fetched_at | ago), profile=s.user_agent_profile) }}
+  </div>
+  {%- if ev.shot_mobile %}
+  <div class="frame frame--phone">
+    {{ ui.shot(ev.shot_mobile.id, "Mobile screenshot of " ~ (ev.shot_mobile.final_url or ev.shot_mobile.url), caption="Mobile capture, " ~ (ev.shot_mobile.fetched_at | ago), profile="mobile") }}
+  </div>
+  {%- endif %}
+</div>
+<p class="ev-url"><span class="ev-url-l">Final URL</span> {{ ui.url_text(s.final_url or s.url) }}{% if s.title %} <span class="ev-url-l">Title</span> <span class="ev-title-text">{{ s.title }}</span>{% endif %}</p>
+{%- else -%}
+<div class="ev-noshot">
+  {{ ui.badge('unknown', 'No screenshot', size="lg") }}
+  <p class="ev-noshot-title">No screenshot yet</p>
+  {%- if ev.latest and ev.latest.error %}
+  <p class="muted">The last fetch failed: <span class="mono">{{ ev.latest.error }}</span></p>
+  {%- elif ev.d.dns_state != 'resolves' %}
+  <p class="muted">The name does not resolve ({{ ev.d.dns_state }}), so the fetcher has nothing to load. It is re-checked on its schedule.</p>
+  {%- else %}
+  <p class="muted">The fetcher snapshots review and high domains that resolve. Decide from the name and the details below, or wait for the next fetch.</p>
+  {%- endif %}
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+{#- The domain's way through the pipeline: seen in CT, fetched, live, AI judged, decided, reported, taken down.
+    Reached steps are lit and say when; the rest are hollow. An ordered list, so it reads as text too. -#}
+{% macro lifecycle(d, ev) -%}
+{%- set decided = d.status != 'open' -%}
+{%- set steps = [
+  ("Seen in CT" if d.source == 'ct' else "Found via " ~ d.source, d.first_seen, "teal"),
+  ("Page fetched", ev.latest.fetched_at if ev.latest else None, "teal"),
+  ("Page live", d.first_live_at, "red"),
+  ("AI judged", ev.ai_page.fetched_at if ev.ai_page else (d.final_score_at if d.ai_verdict else None), "violet"),
+  ({"confirmed": "Confirmed", "false_positive": "False positive", "benign": "Benign"}.get(d.status, "Decided"), d.status_changed_at if decided else None, "red" if d.status == 'confirmed' else "green"),
+  ("Reported", d.reported_at, "violet"),
+  ("Taken down", d.takedown_at, "teal"),
+] -%}
+<ol class="life" aria-label="Pipeline for this domain">
+  {%- for label, ts, tone in steps %}
+  {%- set done = ts is not none or (loop.index == 5 and decided) %}
+  <li class="life-step{{ ' is-done life-step--' ~ tone if done }}"><span class="life-dot" aria-hidden="true"></span><span class="life-l">{{ label }}</span><span class="life-t">{% if ts %}{{ ui.ago(ts) }}{% elif done %}done{% else %}<span class="visually-hidden">not yet</span><span aria-hidden="true">-</span>{% endif %}</span></li>
+  {%- endfor %}
+</ol>
+{%- endmacro %}
+
+{#- ---- the evidence pane of /review ------------------------------------------------------------------ -#}
+
+{% set DECIDED = {"confirmed": "Confirmed phishing", "false_positive": "Marked false positive", "benign": "Marked benign or parked"} %}
+
+{% macro evidence_pane(ev, statuses) -%}
+{%- set d = ev.d -%}
+{%- set kind = VKIND.get(d.ai_verdict, 'unknown') -%}
+<section class="evidence" id="evidence" data-domain-id="{{ d.id }}" data-domain="{{ d.registered_domain }}" data-status="{{ d.status }}" aria-labelledby="ev-title" tabindex="-1">
+  <header class="ev-head">
+    <div class="ev-head-text">
+      <h2 class="ev-title" id="ev-title"><span class="visually-hidden">Evidence for </span><span class="dom">{{ d.registered_domain }}</span></h2>
+      {%- if d.unicode_domain and d.unicode_domain != d.registered_domain %}<p class="ev-idn">Displayed as: <span class="dom">{{ d.unicode_domain }}</span></p>{% endif %}
+      {{ exact_name(d.registered_domain) }}
+      <p class="ev-pills">{{ ui.tier_pill(d.tier) }} {{ ui.status_pill(d.status) }} {{ ui.live_pill(d.live_state) }} {{ ui.verdict_pill(d.ai_verdict, d.ai_confidence) }}</p>
+      <p class="ev-meta">{% if d.brand_id %}Brand <span class="ev-brand">{{ d.brand_id }}</span>. {% endif %}First seen {{ ui.ago(d.first_seen) }} via {{ d.source }}, {{ d.sightings }} {{ 'sighting' if d.sightings == 1 else 'sightings' }}.</p>
+    </div>
+    <div class="ev-head-side">
+      {{ score_ring(d.final_score if d.final_score is not none else d.score, 'red' if (d.final_score if d.final_score is not none else d.score) >= 80 else 'amber', 'Combined score' if d.final_score is not none else 'Domain-name score') }}
+      {{ ui.link_button("Open domain page", "/domain/" ~ d.id, kind="quiet", small=True, shortcut="o") }}
+    </div>
+  </header>
+
+  <div class="ev-flash" data-ev-flash role="status"></div>
+
+  <form method="post" action="/domain/{{ d.id }}/status" class="decision" data-decision data-domain="{{ d.registered_domain }}">
+    {# Enter in the note field uses the first submit button: this disabled one, so Enter never decides. #}
+    <button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+    <div class="field decision-note">
+      <label for="ev-note-{{ d.id }}">Note <span class="muted">(optional, saved with your decision)</span></label>
+      <input class="input" type="text" id="ev-note-{{ d.id }}" name="note" maxlength="2000" autocomplete="off" placeholder="What did you see?" data-note>
+    </div>
+    <div class="decision-buttons btn-row">
+      {%- if d.status != 'open' %}
+      <p class="decision-state">{{ DECIDED.get(d.status, d.status) }}{% if d.status_by %} by {{ d.status_by }}{% endif %}{% if d.status_changed_at %}, {{ ui.ago(d.status_changed_at) }}{% endif %}.</p>
+      <button type="submit" class="btn btn--reopen" name="status" value="open" data-decide="open">Reopen</button>
+      {%- endif %}
+      {%- if ev.official %}
+      <button type="submit" class="btn btn--danger btn--confirm" name="status" value="confirmed" disabled aria-describedby="ev-official-{{ d.id }}">Confirm phishing</button>
+      {%- else %}
+      <button type="submit" class="btn btn--danger btn--confirm" name="status" value="confirmed" data-decide="confirmed"{% if d.status == 'confirmed' %} disabled{% endif %}
+        {{ ui.confirm_attrs("Confirm " ~ d.registered_domain ~ " as phishing?", ok="Confirm phishing", tone="danger",
+           detail="This creates report drafts: within a minute the worker queues the automated Netcraft report and drafts the abuse emails on the Reports page. The blocklist is rebuilt" ~ ((" with the whole domain" if ev.bl_scope.wildcard else " with only the hostnames seen") if ev.bl_scope else "") ~ ".") }}
+        data-confirm-title="Confirm phishing" aria-keyshortcuts="c">Confirm phishing<kbd class="btn-kbd" aria-hidden="true">c</kbd></button>
+      {%- endif %}
+      <button type="submit" class="btn btn--fp" name="status" value="false_positive" data-decide="false_positive"{% if d.status == 'false_positive' %} disabled{% endif %} aria-keyshortcuts="f">Mark false positive<kbd class="btn-kbd" aria-hidden="true">f</kbd></button>
+      <button type="submit" class="btn btn--benign" name="status" value="benign" data-decide="benign"{% if d.status == 'benign' %} disabled{% endif %} aria-keyshortcuts="b">Mark benign / parked<kbd class="btn-kbd" aria-hidden="true">b</kbd></button>
+    </div>
+    {%- if ev.official %}
+    <p class="hint decision-official" id="ev-official-{{ d.id }}">{{ ui.icon('alert', 'tone-amber') }} {{ d.registered_domain }} is an official brand domain or on the allowlist, so it cannot be confirmed as phishing. If a page on it was compromised, tell the brand directly.</p>
+    {%- endif %}
+  </form>
+
+  <div class="ev-grid">
+    <div class="ev-main">
+      {{ shots_block(ev) }}
+    </div>
+    <div class="ev-side">
+      {% call ui.panel("AI verdict", id="ev-ai-" ~ d.id, level=3, class_="panel--ai") %}{{ ai_block(d, ev.ai) }}{% endcall %}
+      {% call ui.panel("What the page asks for", id="ev-asks-" ~ d.id, level=3) %}{{ asks_list(ev.asks, "Nothing seen yet." if not ev.pages else "Nothing: the snapshots show no password, code or card fields.") }}{% endcall %}
+      {% call ui.panel("Combined score", id="ev-score-" ~ d.id, level=3) %}{{ score_block(d) }}{% endcall %}
+    </div>
+  </div>
+
+  <div class="grid-2 ev-more">
+    {% call ui.panel("Why it was flagged", id="ev-why-" ~ d.id, level=3, sub="domain-name score " ~ d.score) %}
+      {{ why_block(d) }}
+      {% if d.ai_triage and d.ai_triage.assessment %}<p class="ev-triage">{{ ui.icon('ai', 'tone-violet') }} <span class="muted">AI name triage</span> {{ d.ai_triage.assessment }}{% if d.ai_triage.likely_target %}, likely target {{ d.ai_triage.likely_target }}{% endif %}</p>{% endif %}
+    {% endcall %}
+    <div>
+      {% call ui.panel("Blocklist", id="ev-bl-" ~ d.id, level=3) %}{{ blocklist_block(d, ev.bl_scope) }}{% endcall %}
+      {% call ui.panel("Hostnames seen", id="ev-hosts-" ~ d.id, level=3, sub=(d.hostnames | length) ~ " of " ~ d.sightings ~ " sightings") %}{{ hostnames_block(d, 12) }}{% endcall %}
+    </div>
+  </div>
+</section>
+{%- endmacro %}

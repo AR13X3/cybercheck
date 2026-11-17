@@ -1,0 +1,213 @@
+# CyberCheck sandboxed fetcher - verified deliverable (fact-checked 2026-11-15)
+# Sources and reasoning: docs/research/sandbox.md
+
+gluetun_image: "qmcgaw/gluetun:v3.41.3@sha256:fa19cc76b2af13d57a8d3dc3066f2ada061b1c761b8aecf989b3877c0486e027"
+
+gluetun_service_settings:          # needed by gluetun itself (wiki port-mapping example and the project's compose conventions)
+  cap_add: [NET_ADMIN]
+  devices: ["/dev/net/tun:/dev/net/tun"]
+  sysctls: ["net.ipv6.conf.all.disable_ipv6=1"]   # keep the namespace IPv4-only; verify inside the container
+  restart: unless-stopped
+  mem_limit: 256m                  # my estimate, not from a source; measure
+  logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+  volumes: ["./gluetun/post-rules.txt:/iptables/post-rules.txt:ro"]
+  networks: ["ccvpn (dedicated IPv4-only bridge with a fixed subnet; gluetun is its only member)"]
+
+gluetun_common_env:
+  # FIREWALL_OUTBOUND_SUBNETS: leave UNSET. It routes those subnets outside the tunnel.
+  # FIREWALL_ENABLED_DISABLING_IT_SHOOTS_YOU_IN_YOUR_FOOT: never set to off.
+  DNS_SERVER: "on"
+  DNS_UPSTREAM_RESOLVER_TYPE: "dot"
+  DNS_UPSTREAM_RESOLVERS: "cloudflare,quad9"
+  DNS_KEEP_NAMESERVER: "off"
+  DNS_BLOCK_IP_PREFIXES: "100.64.0.0/10,0.0.0.0/8"   # built-in rebinding protection doesn't cover these
+  BLOCK_MALICIOUS: "off"           # on by default; would hide phishing domains
+  BLOCK_SURVEILLANCE: "off"        # already off in the image (Dockerfile ENV); explicit for clarity
+  BLOCK_ADS: "off"
+  HTTP_CONTROL_SERVER_ADDRESS: "127.0.0.1:8000"
+  HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: '{"auth":"apikey","apikey":"${GLUETUN_API_KEY}"}'   # key in .env, mode 600
+  HTTPPROXY: "off"
+  SHADOWSOCKS: "off"
+  TZ: "Australia/Sydney"
+
+gluetun_env_custom_wireguard:
+  VPN_SERVICE_PROVIDER: custom
+  VPN_TYPE: wireguard
+  WIREGUARD_ENDPOINT_IP: "<VPS public IPv4; a hostname isn't accepted; not its tailnet IP>"
+  WIREGUARD_ENDPOINT_PORT: "51820"
+  WIREGUARD_PUBLIC_KEY: "<server public key>"
+  WIREGUARD_PRIVATE_KEY: "<client private key>"
+  WIREGUARD_PRESHARED_KEY: "<optional>"
+  WIREGUARD_ADDRESSES: "10.13.13.2/32"    # IPv4 only; an IPv6 address fails validation without IPv6 support
+  WIREGUARD_PERSISTENT_KEEPALIVE_INTERVAL: "25s"
+  vps_side_requirement: "My analysis, not from a source: on the VPS, drop FORWARD from wg0 to 10/8, 172.16/12, 192.168/16, 100.64/10, 169.254/16 and fc00::/7, and drop NEW INPUT from wg0 (the WireGuard handshake arrives on the public interface, not wg0). Don't run Tailscale subnet routing on that VPS."
+
+gluetun_env_mullvad:
+  VPN_SERVICE_PROVIDER: mullvad
+  VPN_TYPE: wireguard
+  WIREGUARD_PRIVATE_KEY: "<PrivateKey from a downloaded Mullvad WireGuard config (not the Devices page key)>"
+  WIREGUARD_ADDRESSES: "<IPv4 Address from that config>/32"
+  SERVER_COUNTRIES: "Australia"
+  SERVER_CITIES: "Sydney"
+  UPDATER_PERIOD: "24h"    # bundled list is from 2025-10 (18 AU relays); live API lists 25
+  note: "All Mullvad AU relays are rented datacenter hosts (M247, xtom, HostRoyale, hostuniversal), so IP-reputation cloaking is likely for some kits."
+
+gluetun_env_protonvpn:
+  VPN_SERVICE_PROVIDER: protonvpn
+  VPN_TYPE: wireguard
+  WIREGUARD_PRIVATE_KEY: "<PrivateKey from Proton WireGuard config>"
+  WIREGUARD_ADDRESSES: "10.2.0.2/32"     # the protonvpn default; can be omitted
+  SERVER_COUNTRIES: "Australia"
+  SERVER_CITIES: "Sydney"
+  SECURE_CORE_ONLY: "off"
+  FREE_ONLY: "off"                       # no AU Proton server is free tier: needs a paid plan
+  PORT_FORWARD_ONLY: "off"
+  VPN_PORT_FORWARDING: "off"
+  # Don't set WIREGUARD_ENDPOINT_PORT (rejected for protonvpn).
+  # UPDATER_PERIOD: leave unset unless UPDATER_PROTONVPN_EMAIL/PASSWORD are provided (Proton data needs login since v3.41.0)
+
+gluetun_firewall_notes: |
+  - v3.41.3 enable(): IPv4 and IPv6 policies are DROP. It accepts lo, ESTABLISHED/RELATED, VPN server IP:port/proto on eth0,
+    output from the container IP to the local Docker subnet (which includes the gateway, i.e. the host), all input on eth0 to the
+    local subnet, FIREWALL_INPUT_PORTS, and then runs /iptables/post-rules.txt. After connecting it appends -A OUTPUT -o wg0 -j ACCEPT.
+  - Routing: everything except the local Docker subnet uses the WireGuard table (0.0.0.0/0 via wg0). LAN, tailnet, CGNAT and metadata
+    destinations therefore go INTO the tunnel to the VPN provider. They never reach the home LAN or tailnet directly, but nothing blocks them.
+  - The firewall CAN be off: with FIREWALL_ENABLED_DISABLING_IT_SHOOTS_YOU_IN_YOUR_FOOT=off, or briefly when enable() fails at startup
+    (for example a bad post-rules line), because fallbackToDisabled sets the policies to ACCEPT and gluetun then exits. Test post-rules before
+    relying on them, and start the fetcher only after gluetun is healthy.
+  - Only post-rules lines starting with iptables/iptables-nft/iptables-legacy/ip6tables/ip6tables-nft/ip6tables-legacy are executed.
+    Use -I so they sit above gluetun's ACCEPT rules:
+      iptables -I OUTPUT -o eth0 -d <CCVPN_SUBNET> -m conntrack --ctstate NEW -j REJECT
+      iptables -I OUTPUT -o wg0 -d 10.0.0.0/8 -j REJECT
+      iptables -I OUTPUT -o wg0 -d 172.16.0.0/12 -j REJECT
+      iptables -I OUTPUT -o wg0 -d 192.168.0.0/16 -j REJECT
+      iptables -I OUTPUT -o wg0 -d 100.64.0.0/10 -j REJECT
+      iptables -I OUTPUT -o wg0 -d 169.254.0.0/16 -j REJECT
+      ip6tables -I OUTPUT -d fc00::/7 -j REJECT
+      ip6tables -I OUTPUT -d fe80::/10 -j REJECT
+    If ip6tables is unavailable, gluetun skips its IPv6 rules silently, but a user ip6tables post-rule then fails, so gluetun opens the firewall and exits.
+    Either confirm ip6tables works or keep only the iptables lines plus disable_ipv6=1.
+    ProtonVPN port forwarding would need 10.2.0.1. It isn't needed here.
+  - Host side: on the ccvpn bridge interface, accept ESTABLISHED/RELATED from the bridge to the host and drop NEW connections in INPUT.
+    Docker 28+ notes that unpublished container ports stay reachable from the host itself, so bind gluetun's control server to 127.0.0.1.
+  - Leave FIREWALL_OUTBOUND_SUBNETS unset. Tailscale on the host doesn't change this as long as the host isn't using an exit node.
+
+expose_port_notes: |
+  - Publish the fetcher API on the gluetun service only: ports: ["127.0.0.1:<free port>:<api port>/tcp"]. The wiki example binds all interfaces,
+    so always add 127.0.0.1. Pick a free port with `ss -tln`; the ports listed in CLAUDE.md are taken.
+  - The fetcher has network_mode: "service:gluetun" and no ports or networks of its own. It shares gluetun's resolv.conf, hosts and hostname files.
+  - FIREWALL_INPUT_PORTS isn't needed for Docker port publishing (gluetun accepts all input on eth0 to the local subnet); the wiki says it seems needed for Kubernetes sidecars.
+  - Docker 28.0.0+ blocks neighbor hosts from reaching ports mapped on loopback.
+  - Page JavaScript can reach anything listening in the shared namespace (fetcher API, gluetun control :8000, health :9999). Require a bearer token on the
+    fetcher API, reject requests with an Origin header, and abort loopback and private targets in the Playwright route handler.
+  - depends_on: {gluetun: {condition: service_healthy, restart: true}}. 'restart: true' only covers Compose-driven updates. After the daemon itself
+    restarts gluetun, restart the fetcher too (its namespace goes stale), for example with a watchdog in the orchestrator.
+
+control_server_notes: |
+  - Default listen :8000. Set HTTP_CONTROL_SERVER_ADDRESS=127.0.0.1:8000 and don't publish it. A 127.0.0.1 bind can't be published anyway,
+    because Docker DNATs to eth0. The host orchestrator should ask the fetcher API, which calls the control server with the key.
+  - v3.41.3 with no auth file and no default role: role 'public' (auth none) covers GET /openvpn/actions/restart, GET /unbound/actions/restart,
+    GET /updater/restart, GET /openvpn/portforwarded, GET /v1/version, GET+PUT /v1/vpn/status, GET+PUT /v1/openvpn/status,
+    GET /v1/openvpn/portforwarded, GET+PUT /v1/dns/status, GET+PUT /v1/updater/status, GET /v1/publicip/ip, GET /v1/portforward.
+    The legacy GET routes change state and can be fired by page JS with a simple request.
+  - Set HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE='{"auth":"apikey","apikey":"..."}'. It covers every route not already in a role. Header: X-API-Key. Unauthorised requests get 401.
+    Generate a key with `docker run --rm qmcgaw/gluetun:v3.41.3 genkey`, or any 32+ character random string.
+  - GET /v1/publicip/ip returns {public_ip, region, country, city, hostname, location, organization, postal_code, timezone}.
+    Default lookup APIs: ipinfo, ifconfigco, ip2location, cloudflare. Check that country == Australia before each batch, and fail closed.
+  - Health server 127.0.0.1:9999 (no auth, read-only status). The image HEALTHCHECK runs /gluetun-entrypoint healthcheck every 5s.
+    Defaults: HEALTH_TARGET_ADDRESSES=cloudflare.com:443,github.com:443; HEALTH_ICMP_TARGET_IPS=1.1.1.1,8.8.8.8; HEALTH_RESTART_VPN=on.
+  - Add uptime monitors (Uptime Kuma or similar) for gluetun (container health) and the fetcher API.
+
+playwright_image: "mcr.microsoft.com/playwright/python:v1.65.2-noble@sha256:38dd67fc654b56b3cba611e4c8eb71cd33750e1cd29eea2a5dc00b484817a75f"
+playwright_image_conservative_alt: "mcr.microsoft.com/playwright/python:v1.65.1-noble@sha256:0ab41a37431309d72b7a26f40ef1fdb464a62740196b2143965a2f59dc090409"
+playwright_python_package: "playwright==1.65.2 (pip install in the Dockerfile; the image doesn't include it). Bundled Chromium 159.0.8154.6."
+playwright_image_caveat: "Official docs: 'It is not recommended to use this Docker image to visit untrusted websites.' The isolation has to come from gluetun, the sandbox and the container hardening."
+
+fetcher_container_settings:
+  network_mode: "service:gluetun"
+  user: pwuser
+  init: true                       # docs recommend --init
+  security_opt: ["seccomp=./seccomp_profile.json", "no-new-privileges:true"]   # Playwright profile (2021); see uncertain
+  cap_drop: [ALL]
+  ipc: private                     # our choice; Playwright docs recommend ipc: host. Fall back to host only if Chromium crashes.
+  shm_size: 1gb
+  read_only: true
+  tmpfs: ["/tmp:size=512m", "/home/pwuser:size=128m,uid=1000"]   # check pwuser's uid in the image
+  mem_limit: 2g
+  pids_limit: 512
+  restart: unless-stopped
+  logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+
+chromium_flags:
+  - "browser = p.chromium.launch(chromium_sandbox=True, channel='chromium')  # without chromium_sandbox=True Playwright adds --no-sandbox; channel='chromium' = new headless (real Chrome), less fingerprintable than headless shell"
+  - "Never pass --no-sandbox, --disable-web-security, --single-process, --no-zygote, or your own --disable-features (Playwright already passes one list)."
+  - "--disable-dev-shm-usage is already in Playwright's default switches."
+  - "--force-webrtc-ip-handling-policy=disable_non_proxied_udp  # switch exists in Chromium main (content_switches.cc); defence in depth only, the network layer is the control"
+  - "Context: **p.devices['Pixel 7'] (Python dict unpacking) with user_agent rewritten to the reduced form 'Chrome/159.0.0.0'; locale='en-AU', timezone_id='Australia/Sydney', service_workers='block', accept_downloads=False, record_har_path=<job>.har, record_har_content='embed'"
+  - "Limits: page.goto(url, wait_until='domcontentloaded', timeout=20000); context.set_default_timeout(15000); asyncio.wait_for over the whole job, then close the context; recycle the browser every N jobs"
+  - "Routing: context.route('**/*') aborts URLs whose host is localhost or an IP literal in 127/8, 10/8, 172.16/12, 192.168/16, 100.64/10, 169.254/16, 0/8, ::1, fc00::/7, fe80::/10; context.route_web_socket for WebSockets. This is defence in depth: hostnames resolving to private IPs are handled by gluetun DNS filtering plus the post-rules"
+  - "Capture: page.screenshot(type='webp', quality=80, full_page=True) (native since 1.62; quality 100 = lossless); page.url; response.request.redirected_from chain; page.content(); framenavigated events for JS or meta redirects; HAR written on context.close()"
+
+cloaking_notes: |
+  - Silent Push (Smishing Triad/Lighthouse, 2025-04-10): admin panel has "A country whitelist" and "most pages only render to mobile user agents";
+    the kits "were initially focused on Australian financial institutions" (CommBank, Bendigo, Bank of Sydney) and Australia Post is targeted.
+  - Netcraft (darcula v3, 2025-02-20): risky-IP filtering, crawl filtering, and blocking of non-mobile devices. Detection "requires a global proxy network
+    to fetch fraudulent content in certain geographies and from unknown IPs" on varying device types.
+  - PhishFarm (IEEE S&P 2019): geo, mobile-only and security-entity filters measurably delayed or prevented blacklisting.
+  - urlscan.io exposes country, customagent and referer per scan, so practitioners match the victim's country, device and referrer.
+  - For CyberCheck: an Australian exit (Mullvad or Proton Sydney), an Android Chromium profile (Pixel or Galaxy; iPhone UAs on Chromium give a mismatched engine
+    fingerprint, which is my analysis), en-AU and Australia/Sydney, new-headless channel, and optionally an SMS-like referrer-less first visit.
+  - Mullvad AU relays are rented datacenter IPs (M247, xtom, HostRoyale, hostuniversal), so expect IP-reputation filtering. Record "no content",
+    "decoy", "CAPTCHA gate" (Unit 42 documents CAPTCHA-protected phishing) or "redirect to the real brand" as INCONCLUSIVE, sent to the human review queue, never as negative.
+  - Gluetun DNS filtering (rebinding protection and DNS_BLOCK_IP_PREFIXES) hides domains that resolve to private or CGNAT IPs. Resolve separately in the
+    scorer if that is a useful signal.
+
+isolation_tests:
+  # Run after `docker compose up -d`. The fetcher service gets GLUETUN_API_KEY in its env. `ip` commands run in the gluetun container (same netns, busybox ip).
+  - cmd: "docker compose exec fetcher sh -c 'curl -s -m 10 -H \"X-API-Key: $GLUETUN_API_KEY\" http://127.0.0.1:8000/v1/publicip/ip'"
+    expect: "public_ip is the VPN exit, not the home IP; country Australia; organization is the VPN provider's or VPS host's"
+  - cmd: "docker compose exec fetcher curl -s -m 10 https://ipinfo.io/ip ; curl -s -m 10 https://ipinfo.io/ip   # second one on the host"
+    expect: "fetcher IP == VPN exit from the test above; host IP differs (home IP)"
+  - cmd: "docker compose exec fetcher curl -s -m 5 -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8000/v1/vpn/status"
+    expect: "401 (no key, auth enforced)"
+  - cmd: "docker compose exec fetcher curl -s -m 5 -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8000/openvpn/actions/restart"
+    expect: "401 (legacy GET route also protected)"
+  - cmd: "docker compose exec gluetun sh -c 'ip rule; ip route get 192.168.1.1; ip route get <host tailnet IP>; ip route get 169.254.169.254'"
+    expect: "only the ccvpn subnet uses the main table; each of the three destinations resolves to dev wg0, never eth0"
+  - cmd: "docker compose exec gluetun sh -c 'iptables -S OUTPUT; ip6tables -S OUTPUT'"
+    expect: "-P OUTPUT DROP for both; the post-rules REJECT lines appear before the -o wg0 -j ACCEPT and local-subnet ACCEPT rules"
+  - cmd: "docker compose exec fetcher sh -c 'curl -s -m 5 http://192.168.1.1/ ; echo rc=$?'   # use the real LAN router IP"
+    expect: "non-zero rc (rejected/refused); the same URL from the host answers"
+  - cmd: "docker compose exec fetcher sh -c 'curl -s -m 5 http://<host tailnet IP>:22/ ; echo rc=$?'   # tailscale ip -4 on the host"
+    expect: "non-zero rc (tailnet unreachable)"
+  - cmd: "docker compose exec fetcher sh -c 'curl -s -m 5 http://169.254.169.254/ ; echo rc=$?'"
+    expect: "non-zero rc (metadata unreachable)"
+  - cmd: "docker network inspect <project>_ccvpn --format '{{(index .IPAM.Config 0).Gateway}}'   # on the host"
+    expect: "note the gateway IP (the host side of the bridge) for the next test"
+  - cmd: "docker compose exec fetcher sh -c 'curl -s -m 5 http://<CCVPN_GATEWAY>:22/ ; echo rc=$?; curl -s -m 5 http://<CCVPN_GATEWAY>:5432/ ; echo rc=$?'"
+    expect: "non-zero rc for both (post-rule REJECT on NEW to the Docker subnet, plus host INPUT drop)"
+  - cmd: "docker compose exec fetcher sh -c 'cat /proc/sys/net/ipv6/conf/all/disable_ipv6; curl -6 -s -m 5 https://ipv6.icanhazip.com ; echo rc=$?'"
+    expect: "1, and non-zero rc"
+  - cmd: "docker compose exec fetcher cat /etc/resolv.conf"
+    expect: "nameserver 127.0.0.1 (gluetun's DNS; the file is shared with gluetun)"
+  - cmd: "docker compose exec gluetun sh -c 'nslookup <a test hostname you control whose A record is a 100.64.0.0/10 address, e.g. 100.64.0.10> 127.0.0.1'"
+    expect: "no answer / blocked (DNS_BLOCK_IP_PREFIXES covers 100.64/10). Optional: needs a domain you own"
+  - cmd: "sudo tcpdump -ni <host uplink> port 53 or port 853   # on the host, while the fetcher loads a few pages"
+    expect: "no DNS from the host on behalf of the fetcher; only WireGuard UDP to the VPN endpoint carries its traffic"
+  - cmd: "docker compose exec fetcher sh -c 'curl -s -m 5 -X PUT -H \"X-API-Key: $GLUETUN_API_KEY\" -H \"Content-Type: application/json\" -d \"{\\\"status\\\":\\\"stopped\\\"}\" http://127.0.0.1:8000/v1/vpn/status; sleep 3; curl -s -m 5 https://ipinfo.io/ip; echo rc=$?'"
+    expect: "the second curl fails (non-zero rc) and never prints the home IP; then PUT {\"status\":\"running\"} to restore (HEALTH_RESTART_VPN may also restart it)"
+  - cmd: "python - <<'EOF'  # inside the fetcher: launch(chromium_sandbox=True, channel='chromium'), open a page, then:\nEOF\ndocker compose exec fetcher sh -c 'for p in $(pgrep -f -- --type=renderer); do grep -E \"Seccomp:|NSpid\" /proc/$p/status; ls -l /proc/$p/ns/user; done'"
+    expect: "renderer processes show Seccomp: 2 and a user namespace different from the browser process; the browser starts without 'No usable sandbox'. chrome://sandbox screenshot is optional (unverified in headless)"
+  - cmd: "docker compose exec fetcher sh -c 'pgrep -fc -- --no-sandbox'   # while a browser is running"
+    expect: "0 (no Chromium process was started with --no-sandbox)"
+
+uncertain:
+  - "Docker's IPv6 default for containers on IPv4-only networks; set disable_ipv6=1 explicitly and check"
+  - "Which namespace Docker's embedded DNS (127.0.0.11) forwards from when the host uses systemd-resolved; affects only local-looking names gluetun forwards there"
+  - "Whether the 2021 Playwright seccomp profile (no clone3) works cleanly with Chromium 159 on Docker 29.5/runc; build from the current Docker default plus clone/setns/unshare if not"
+  - "Ubuntu 26.04 AppArmor userns restriction vs Chromium's namespace sandbox inside docker-default"
+  - "Chromium handling of duplicate --disable-features switches"
+  - "Chrome Local Network Access behaviour under Playwright automation"
+  - "Memory per page (no primary source; measure)"
+  - "Rate of cloaking against Mullvad or Proton Sydney datacenter exits"
+  - "Whether iproute2 is present in the Playwright image"

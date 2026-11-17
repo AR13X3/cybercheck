@@ -1,0 +1,1274 @@
+# CyberCheck brand watchlist: Australia.
+#
+# keywords        distinctive tokens (>= 4 chars) matched anywhere in a hostname, plus typo
+#                 variants for keywords of 6+ chars.
+# short_tokens    ambiguous tokens (anz, nab, ato...) that appear inside ordinary words.
+#                 They only count as a whole token ("anz-verify") or glued to a bait word
+#                 ("nablogin", "mynab"), and only with bait/AU context.
+# needs_context   keyword is also a place name / foreign brand (bendigo, medicare, kmart...):
+#                 without a bait word or AU context it scores low and is not stored.
+# official_domains  registrable domains the brand itself uses. These are never flagged.
+#                 Draft entries are being verified (docs/research/au-watchlist.md).
+# exclude         substrings that mean "not this brand" (e.g. linktree for linkt).
+
+# Merged 2026-11-16 with the verified research in docs/research/au-watchlist.{md,yaml}.
+# official_domains contain only verified domains (plus a few well-known subsidiaries).
+
+brands:
+- id: commbank
+  name: Commonwealth Bank
+  category: bank
+  priority: 1
+  keywords:
+  - commbank
+  - netbank
+  - commonwealthbank
+  - commsec
+  - commbiz
+  short_tokens:
+  - cba
+  official_domains:
+  - cba.com
+  - cba.com.au
+  - commbank.com
+  - commbank.com.au
+  - commbiz.com.au
+  - commonwealthbank.com.au
+  - commsec.com.au
+  - netbank.com.au
+  exclude:
+  - internetbank
+- id: westpac
+  name: Westpac
+  category: bank
+  priority: 1
+  keywords:
+  - westpac
+  - westpacgroup
+  official_domains:
+  - westpac.co.nz
+  - westpac.com.au
+  - westpacgroup.com
+  - westpacgroup.com.au
+  short_tokens: []
+- id: anz
+  name: ANZ
+  category: bank
+  priority: 1
+  keywords:
+  - anzbank
+  - anzplus
+  - anzinternetbanking
+  short_tokens:
+  - anz
+  official_domains:
+  - anz.co.nz
+  - anz.com
+  - anz.com.au
+  - anzplus.com
+  - anzplus.com.au
+- id: nab
+  name: NAB
+  category: bank
+  priority: 1
+  keywords:
+  - nabbank
+  - nabconnect
+  - nationalaustraliabank
+  - nabtrade
+  short_tokens:
+  - nab
+  official_domains:
+  - nab.com
+  - nab.com.au
+  - nabgroup.com
+  - nabtrade.com.au
+- id: stgeorge
+  name: St.George Bank
+  category: bank
+  priority: 2
+  keywords:
+  - stgeorge
+  - stgeorgebank
+  - bankofmelbourne
+  official_domains:
+  - bankofmelbourne.com
+  - bankofmelbourne.com.au
+  - banksa.com
+  - banksa.com.au
+  - stgeorge.com.au
+  short_tokens:
+  - banksa
+  exclude:
+  - college
+  - institute
+  - school
+- id: banksa
+  name: BankSA
+  category: bank
+  priority: 3
+  keywords: []
+  short_tokens:
+  - banksa
+  official_domains:
+  - banksa.com.au
+- id: bankofmelbourne
+  name: Bank of Melbourne
+  category: bank
+  priority: 3
+  keywords:
+  - bankofmelbourne
+  official_domains:
+  - bankofmelbourne.com.au
+- id: bankwest
+  name: Bankwest
+  category: bank
+  priority: 2
+  keywords:
+  - bankwest
+  official_domains:
+  - bankwest.com.au
+  short_tokens: []
+- id: ubank
+  name: ubank
+  category: bank
+  priority: 2
+  keywords:
+  - ubank
+  short_tokens:
+  - ubank
+  - '86400'
+  official_domains:
+  - 86400.com.au
+  - ubank.com.au
+- id: macquarie
+  name: Macquarie Bank
+  category: bank
+  priority: 2
+  keywords:
+  - macquarie
+  - macquariebank
+  needs_context: true
+  official_domains:
+  - macquarie.com
+  - macquarie.com.au
+  - macquariebank.com
+  - macquariebank.com.au
+  short_tokens: []
+- id: ing
+  name: ING Australia
+  category: bank
+  priority: 2
+  keywords: []
+  short_tokens:
+  - ing
+  short_requires_au: true
+  official_domains:
+  - ing.com
+  - ing.com.au
+  - ingaustralia.com
+  - ingdirect.com.au
+- id: bendigo
+  name: Bendigo Bank
+  category: bank
+  priority: 2
+  keywords:
+  - bendigobank
+  - bendigo
+  - adelaidebank
+  - upbank
+  needs_context: true
+  official_domains:
+  - adelaidebank.com.au
+  - bendigobank.com
+  - bendigobank.com.au
+  - up.com.au
+  short_tokens: []
+- id: boq
+  name: Bank of Queensland
+  category: bank
+  priority: 3
+  keywords:
+  - bankofqueensland
+  - virginmoney
+  short_tokens:
+  - boq
+  - mebank
+  official_domains:
+  - boq.com
+  - boq.com.au
+  - mebank.com.au
+  - virginmoney.com.au
+  needs_context: true
+- id: suncorp
+  name: Suncorp
+  category: bank
+  priority: 2
+  keywords:
+  - suncorp
+  - suncorpbank
+  official_domains:
+  - suncorp.com.au
+  - suncorpbank.com.au
+  short_tokens: []
+- id: mebank
+  name: ME Bank
+  category: bank
+  priority: 3
+  keywords: []
+  short_tokens:
+  - mebank
+  official_domains:
+  - mebank.com.au
+- id: upbank
+  name: Up Bank
+  category: bank
+  priority: 3
+  keywords:
+  - upbank
+  official_domains:
+  - up.com.au
+- id: amp
+  name: AMP
+  category: bank
+  priority: 3
+  keywords:
+  - ampbank
+  short_tokens: []
+  official_domains:
+  - amp.com.au
+- id: hsbc_au
+  name: HSBC Australia
+  category: bank
+  priority: 3
+  keywords:
+  - hsbc
+  needs_context: true
+  official_domains:
+  - hsbc.com
+  - hsbc.com.au
+  short_tokens: []
+- id: greatsouthern
+  name: Great Southern Bank
+  category: bank
+  priority: 3
+  keywords:
+  - greatsouthernbank
+  official_domains:
+  - cua.com.au
+  - greatsouthernbank.com.au
+  short_tokens: []
+- id: newcastlepermanent
+  name: Newcastle Permanent
+  category: bank
+  priority: 3
+  keywords:
+  - newcastlepermanent
+  - greaterbank
+  official_domains:
+  - greater.com.au
+  - newcastlepermanent.com.au
+  short_tokens: []
+- id: beyondbank
+  name: Beyond Bank
+  category: bank
+  priority: 3
+  keywords:
+  - beyondbank
+  official_domains:
+  - beyondbank.com.au
+  short_tokens: []
+- id: mygov
+  name: myGov
+  category: government
+  priority: 1
+  keywords:
+  - mygov
+  - mygovau
+  - servicesaustralia
+  - centrelink
+  needs_context: true
+  official_domains:
+  - centrelink.gov.au
+  - humanservices.gov.au
+  - medicare.gov.au
+  - my.gov.au
+  - mygov.gov.au
+  - servicesaustralia.gov.au
+  short_tokens: []
+- id: ato
+  name: Australian Taxation Office
+  category: government
+  priority: 1
+  keywords:
+  - atogov
+  - taxationoffice
+  - australiantaxation
+  - australiantaxationoffice
+  short_tokens:
+  - ato
+  official_domains:
+  - ato.gov.au
+- id: servicesaustralia
+  name: Services Australia
+  category: government
+  priority: 1
+  keywords:
+  - servicesaustralia
+  official_domains:
+  - servicesaustralia.gov.au
+- id: centrelink
+  name: Centrelink
+  category: government
+  priority: 1
+  keywords:
+  - centrelink
+  official_domains:
+  - centrelink.gov.au
+  - servicesaustralia.gov.au
+- id: medicare
+  name: Medicare
+  category: government
+  priority: 1
+  keywords:
+  - medicare
+  needs_context: true
+  official_domains:
+  - servicesaustralia.gov.au
+  exclude:
+  - advantage
+  - coverage
+  - medicareplan
+  - part-d
+  - partd
+  - supplement
+- id: servicensw
+  name: Service NSW
+  category: transport
+  priority: 2
+  keywords:
+  - servicensw
+  - revenuensw
+  - tfnsw
+  - transportnsw
+  - myetoll
+  official_domains:
+  - myetoll.com.au
+  - nsw.gov.au
+  - revenue.nsw.gov.au
+  - service.nsw.gov.au
+  - transport.nsw.gov.au
+  short_tokens: []
+- id: transportnsw
+  name: Transport for NSW
+  category: transport
+  priority: 2
+  keywords:
+  - transportnsw
+  short_tokens:
+  - opal
+  official_domains:
+  - transport.nsw.gov.au
+- id: vicroads
+  name: VicRoads
+  category: transport
+  priority: 2
+  keywords:
+  - vicroads
+  official_domains:
+  - vicroads.vic.gov.au
+  short_tokens: []
+- id: servicevic
+  name: Service Victoria
+  category: transport
+  priority: 3
+  keywords:
+  - servicevictoria
+  - servicevic
+  - finesvic
+  - finesvictoria
+  official_domains:
+  - fines.vic.gov.au
+  - service.vic.gov.au
+  short_tokens: []
+- id: myki
+  name: myki
+  category: transport
+  priority: 3
+  keywords: []
+  short_tokens:
+  - myki
+  official_domains: []
+- id: auspost
+  name: Australia Post
+  category: post
+  priority: 1
+  keywords:
+  - auspost
+  - australiapost
+  official_domains:
+  - auspost.com
+  - auspost.com.au
+  - australiapost.com
+  - australiapost.com.au
+  short_tokens:
+  - mypost
+- id: startrack
+  name: StarTrack
+  category: post
+  priority: 2
+  keywords:
+  - startrack
+  - startrackcourier
+  needs_context: true
+  official_domains:
+  - startrack.com.au
+  - startrackcourier.com.au
+  short_tokens: []
+- id: aramex_au
+  name: Aramex Australia
+  category: post
+  priority: 3
+  keywords:
+  - aramex
+  - fastway
+  needs_context: true
+  official_domains:
+  - aramex.com.au
+  - fastway.com.au
+  short_tokens: []
+- id: linkt
+  name: Linkt
+  category: toll
+  priority: 1
+  keywords:
+  - linkttoll
+  - transurban
+  short_tokens:
+  - linkt
+  - citylink
+  exclude:
+  - linktr
+  - linktree
+  official_domains:
+  - linkt.com.au
+  - transurban.com
+  - transurban.com.au
+  short_requires_au: true
+- id: transurban
+  name: Transurban
+  category: toll
+  priority: 2
+  keywords:
+  - transurban
+  official_domains:
+  - transurban.com
+- id: eastlink
+  name: EastLink
+  category: toll
+  priority: 3
+  keywords:
+  - eastlink
+  needs_context: true
+  official_domains:
+  - eastlink.com.au
+  short_tokens: []
+- id: etoll
+  name: e-Toll (generic)
+  category: toll
+  priority: 2
+  keywords:
+  - etoll
+  - myetoll
+  needs_context: true
+  official_domains: []
+- id: telstra
+  name: Telstra
+  category: telco
+  priority: 1
+  keywords:
+  - telstra
+  - bigpond
+  - mytelstra
+  official_domains:
+  - bigpond.com
+  - bigpond.net.au
+  - telstra.com
+  - telstra.com.au
+  short_tokens: []
+- id: optus
+  name: Optus
+  category: telco
+  priority: 1
+  keywords:
+  - optus
+  - myoptus
+  - optusnet
+  official_domains:
+  - optus.com
+  - optus.com.au
+  - optusnet.com
+  short_tokens: []
+- id: vodafone_au
+  name: Vodafone Australia
+  category: telco
+  priority: 3
+  keywords:
+  - vodafone
+  - iinet
+  - tpgtelecom
+  needs_context: true
+  official_domains:
+  - iinet.net
+  - iinet.net.au
+  - tpg.com.au
+  - tpgtelecom.com
+  - tpgtelecom.com.au
+  - vodafone.com.au
+  short_tokens:
+  - tpg
+- id: tpg
+  name: TPG
+  category: telco
+  priority: 3
+  keywords: []
+  short_tokens:
+  - tpg
+  official_domains:
+  - tpg.com.au
+- id: aussiebb
+  name: Aussie Broadband
+  category: telco
+  priority: 3
+  keywords:
+  - aussiebroadband
+  official_domains:
+  - aussiebroadband.com.au
+  short_tokens: []
+- id: australiansuper
+  name: AustralianSuper
+  category: super
+  priority: 2
+  keywords:
+  - australiansuper
+  official_domains:
+  - australiansuper.com
+  - australiansuper.com.au
+  short_tokens: []
+- id: art
+  name: Australian Retirement Trust
+  category: super
+  priority: 3
+  keywords:
+  - australianretirementtrust
+  - qsuper
+  official_domains:
+  - australianretirementtrust.com.au
+  - qsuper.com.au
+  short_tokens: []
+- id: hostplus
+  name: Hostplus
+  category: super
+  priority: 3
+  keywords:
+  - hostplus
+  official_domains:
+  - hostplus.com.au
+  short_tokens: []
+- id: unisuper
+  name: UniSuper
+  category: super
+  priority: 3
+  keywords:
+  - unisuper
+  official_domains:
+  - unisuper.com.au
+  short_tokens: []
+- id: awaresuper
+  name: Aware Super
+  category: super
+  priority: 3
+  keywords:
+  - awaresuper
+  official_domains:
+  - aware.com.au
+  short_tokens: []
+- id: cbus
+  name: Cbus Super
+  category: super
+  priority: 3
+  keywords:
+  - cbussuper
+  short_tokens:
+  - cbus
+  official_domains:
+  - cbussuper.com.au
+- id: agl
+  name: AGL
+  category: energy
+  priority: 2
+  keywords: []
+  short_tokens:
+  - agl
+  official_domains:
+  - agl.com.au
+- id: origin
+  name: Origin Energy
+  category: energy
+  priority: 2
+  keywords:
+  - originenergy
+  official_domains:
+  - originenergy.com.au
+  short_tokens: []
+- id: energyaustralia
+  name: EnergyAustralia
+  category: energy
+  priority: 3
+  keywords:
+  - energyaustralia
+  official_domains:
+  - energyaustralia.com
+  - energyaustralia.com.au
+  short_tokens: []
+- id: payid
+  name: PayID / Osko
+  category: payments
+  priority: 1
+  keywords:
+  - payid
+  short_tokens:
+  - osko
+  - payto
+  - bpay
+  official_domains:
+  - auspayplus.com.au
+  - nppa.com.au
+  - payid.com.au
+  - payto.com.au
+  exclude:
+  - betting
+  - casino
+  - gambling
+  - pokie
+  - pokies
+  - slots
+- id: bpay
+  name: BPAY
+  category: payments
+  priority: 3
+  keywords: []
+  short_tokens:
+  - bpay
+  official_domains: []
+- id: afterpay
+  name: Afterpay
+  category: payments
+  priority: 2
+  keywords:
+  - afterpay
+  official_domains:
+  - afterpay.com
+  short_tokens: []
+- id: zip
+  name: Zip
+  category: payments
+  priority: 3
+  keywords:
+  - zippay
+  - zipmoney
+  official_domains:
+  - zip.co
+  - zipmoney.com
+  short_tokens: []
+- id: woolworths
+  name: Woolworths
+  category: retail
+  priority: 2
+  keywords:
+  - woolworths
+  - everydayrewards
+  - woolies
+  needs_context: true
+  official_domains:
+  - everyday.com.au
+  - woolworths.com.au
+  - woolworthsgroup.com.au
+  - woolworthsrewards.com
+  - woolworthsrewards.com.au
+  short_tokens: []
+- id: coles
+  name: Coles
+  category: retail
+  priority: 2
+  keywords:
+  - colesgroup
+  - flybuys
+  short_tokens:
+  - coles
+  official_domains:
+  - coles.com.au
+  - flybuys.com.au
+- id: bunnings
+  name: Bunnings
+  category: retail
+  priority: 3
+  keywords:
+  - bunnings
+  official_domains:
+  - bunnings.com.au
+  short_tokens: []
+- id: jbhifi
+  name: JB Hi-Fi
+  category: retail
+  priority: 3
+  keywords:
+  - jbhifi
+  official_domains:
+  - jbhifi.com.au
+  short_tokens: []
+- id: kmart_au
+  name: Kmart Australia
+  category: retail
+  priority: 3
+  keywords:
+  - kmart
+  needs_context: true
+  official_domains:
+  - kmart.com.au
+  short_tokens: []
+- id: coinspot
+  name: CoinSpot
+  category: crypto
+  priority: 2
+  keywords:
+  - coinspot
+  official_domains:
+  - coinspot.com.au
+  short_tokens: []
+- id: swyftx
+  name: Swyftx
+  category: crypto
+  priority: 3
+  keywords:
+  - swyftx
+  official_domains:
+  - swyftx.com
+  short_tokens: []
+- id: qantas
+  name: Qantas
+  category: airline
+  priority: 2
+  keywords:
+  - qantas
+  - jetstar
+  official_domains:
+  - jetstar.com
+  - jetstar.com.au
+  - qantas.com
+  - qantas.com.au
+  short_tokens: []
+- id: virginaustralia
+  name: Virgin Australia
+  category: airline
+  priority: 3
+  keywords:
+  - virginaustralia
+  - velocityfrequentflyer
+  official_domains:
+  - velocityfrequentflyer.com
+  - virginaustralia.com
+  short_tokens: []
+- id: medibank
+  name: Medibank
+  category: insurance
+  priority: 3
+  keywords:
+  - medibank
+  official_domains:
+  - ahm.com.au
+  - medibank.com.au
+  short_tokens:
+  - ahm
+- id: nrma
+  name: NRMA
+  category: insurance
+  priority: 3
+  keywords:
+  - mynrma
+  short_tokens:
+  - nrma
+  official_domains:
+  - mynrma.com.au
+  - nrma.com
+  - nrma.com.au
+- id: gov_au_generic
+  name: Australian government (generic)
+  category: government
+  priority: 1
+  keywords:
+  - govau
+  official_domains: []
+- id: myid
+  name: myID (formerly myGovID, run by the ATO)
+  category: government
+  priority: 2
+  keywords:
+  - mygovid
+  short_tokens:
+  - myid
+  official_domains:
+  - mygovid.gov.au
+  - myid.gov.au
+  short_requires_au: true
+- id: austrac
+  name: AUSTRAC
+  category: government
+  priority: 3
+  keywords:
+  - austrac
+  short_tokens: []
+  official_domains:
+  - austrac.gov.au
+- id: ndis
+  name: NDIS / NDIA
+  category: government
+  priority: 3
+  keywords: []
+  short_tokens:
+  - ndis
+  - ndia
+  official_domains:
+  - ndis.gov.au
+- id: qld_tmr
+  name: Queensland Transport and Main Roads (TMR)
+  category: transport
+  priority: 2
+  keywords:
+  - qldtmr
+  - tmrqld
+  short_tokens: []
+  official_domains:
+  - tmr.qld.gov.au
+- id: couriersplease
+  name: CouriersPlease
+  category: post
+  priority: 3
+  keywords:
+  - couriersplease
+  short_tokens: []
+  official_domains:
+  - couriersplease.com.au
+- id: people_first_bank
+  name: People First Bank (Heritage Bank, People's Choice)
+  category: bank
+  priority: 3
+  keywords:
+  - heritagebank
+  - peoplefirstbank
+  - peopleschoice
+  short_tokens: []
+  official_domains:
+  - heritage.com.au
+  - peoplefirstbank.com.au
+  - peopleschoice.com.au
+- id: teachers_mutual
+  name: Teachers Mutual Bank
+  category: bank
+  priority: 3
+  keywords:
+  - teachersmutual
+  - tmbank
+  short_tokens: []
+  official_domains:
+  - tmbank.com.au
+- id: bank_australia
+  name: Bank Australia
+  category: bank
+  priority: 3
+  keywords:
+  - bankaust
+  - bankaustralia
+  short_tokens: []
+  official_domains:
+  - bankaust.com.au
+- id: nbn
+  name: nbn (NBN Co)
+  category: telco
+  priority: 3
+  keywords:
+  - nbnco
+  short_tokens:
+  - nbn
+  official_domains:
+  - nbn.com.au
+  - nbnco.com.au
+  short_requires_au: true
+- id: rest
+  name: Rest Super
+  category: super
+  priority: 3
+  keywords:
+  - restsuper
+  short_tokens: []
+  official_domains:
+  - rest.com.au
+- id: hesta
+  name: HESTA
+  category: super
+  priority: 3
+  keywords:
+  - hesta
+  short_tokens: []
+  official_domains:
+  - hesta.com.au
+- id: beem
+  name: Beem (eftpos / Australian Payments Plus)
+  category: payments
+  priority: 3
+  keywords:
+  - beemit
+  short_tokens:
+  - beem
+  official_domains:
+  - beem.com.au
+- id: amazon_au
+  name: Amazon Australia
+  category: retail
+  priority: 2
+  keywords: []
+  short_tokens:
+  - amazon
+  official_domains:
+  - amazon.com
+  - amazon.com.au
+  short_requires_au: true
+- id: myer
+  name: Myer
+  category: retail
+  priority: 3
+  keywords:
+  - myerone
+  short_tokens:
+  - myer
+  official_domains:
+  - myer.com.au
+- id: independent_reserve
+  name: Independent Reserve
+  category: crypto
+  priority: 3
+  keywords:
+  - independentreserve
+  short_tokens: []
+  official_domains:
+  - independentreserve.com
+- id: racv
+  name: RACV
+  category: insurance
+  priority: 3
+  keywords: []
+  short_tokens:
+  - racv
+  official_domains:
+  - racv.com
+  - racv.com.au
+- id: racq
+  name: RACQ
+  category: insurance
+  priority: 3
+  keywords: []
+  short_tokens:
+  - racq
+  official_domains:
+  - racq.com
+  - racq.com.au
+- id: aami
+  name: AAMI (Suncorp Group)
+  category: insurance
+  priority: 3
+  keywords: []
+  short_tokens:
+  - aami
+  official_domains:
+  - aami.com.au
+- id: bupa_au
+  name: Bupa Australia
+  category: insurance
+  priority: 3
+  keywords: []
+  short_tokens:
+  - bupa
+  official_domains:
+  - bupa.com
+  - bupa.com.au
+extra_allowlist:
+# HSBC group sites outside Australia, verified 2026-11-16 on https://www.hsbc.com/who-we-are/our-markets
+# (links to about.hsbc.com.hk / .com.cn / .com.mx / .co.uk). hsbc.com.ar is NOT listed there (the Argentina
+# business was sold), so it is deliberately absent.
+- hsbc.co.uk
+- hsbc.com.cn
+- hsbc.com.hk
+- hsbc.com.mx
+- aramex.com
+- kmart.com
+- linktr.ee
+- mcas.ms
+- medicare.gov
+- mygov.in
+- vodafone.co.uk
+- vodafone.com
+- woolworths.co.za
+bait_words:
+  strong:
+  - login
+  - logon
+  - signin
+  - verify
+  - verification
+  - secure
+  - security
+  - update
+  - account
+  - accounts
+  - authenticate
+  - auth
+  - unlock
+  - locked
+  - suspend
+  - suspended
+  - suspension
+  - confirm
+  - validate
+  - refund
+  - rebate
+  - claim
+  - unclaimed
+  - reward
+  - rewards
+  - prize
+  - payment
+  - payments
+  - billing
+  - invoice
+  - overdue
+  - unpaid
+  - outstanding
+  - toll
+  - tolls
+  - fine
+  - fines
+  - penalty
+  - infringement
+  - rego
+  - registration
+  - renew
+  - renewal
+  - parcel
+  - redelivery
+  - delivery
+  - deliver
+  - tracking
+  - track
+  - customs
+  - package
+  - taxrefund
+  - refunds
+  - wallet
+  - otp
+  - identity
+  - kyc
+  - recover
+  - recovery
+  - reset
+  - alert
+  - alerts
+  - notice
+  - notification
+  - pending
+  - release
+  - transfer
+  - netbanking
+  - ebanking
+  - internetbanking
+  - online-banking
+  - banking
+  - superannuation
+  weak:
+  - address
+  - app
+  - au
+  - au-
+  - aus
+  - bank
+  - benefit
+  - benefits
+  - bill
+  - bonus
+  - care
+  - center
+  - centre
+  - check
+  - clearance
+  - client
+  - compromised
+  - courier
+  - customer
+  - debt
+  - demerit
+  - desk
+  - device
+  - duplicate
+  - eftrefund
+  - expire
+  - expired
+  - expiry
+  - fee
+  - final
+  - frequentflyer
+  - gift
+  - gov
+  - hardship
+  - help
+  - id
+  - inbox
+  - info
+  - licence
+  - limited
+  - lodgment
+  - member
+  - members
+  - message
+  - mobile
+  - my
+  - official
+  - online
+  - overpayment
+  - passkey
+  - pay
+  - payid
+  - paynow
+  - points
+  - portal
+  - postcode
+  - redeliver
+  - relief
+  - reminder
+  - reschedule
+  - restore
+  - restricted
+  - rollover
+  - service
+  - services
+  - shipment
+  - status
+  - super
+  - support
+  - suspicious
+  - tax
+  - taxreturn
+  - team
+  - unauthorised
+  - upgrade
+  - user
+  - users
+  - web
+au_context_tokens:
+- adelaide
+- au
+- au-gov
+- aus
+- aussie
+- australia
+- australian
+- brisbane
+- canberra
+- com-au
+- comau
+- darwin
+- gov-au
+- govau
+- hobart
+- melbourne
+- net-au
+- nsw
+- perth
+- qld
+- sydney
+- tas
+- vic
+suspicious_tlds:
+- top
+- xyz
+- shop
+- online
+- site
+- icu
+- cfd
+- sbs
+- bond
+- click
+- lol
+- info
+- live
+- life
+- cc
+- vip
+- buzz
+- rest
+- mom
+- cyou
+- cam
+- today
+- support
+- help
+- link
+- work
+- fun
+- store
+- win
+- bid
+- loan
+- monster
+- quest
+- autos
+- boats
+- homes
+- beauty
+- hair
+- makeup
+- skin
+- lat
+- best
+- ws
+- su
+- tk
+- ml
+- ga
+- cf
+- gq
+- pw
+- digital
+- network
+- services
+- center
+- run
+- guru
+- email
+- net.ru
+- vercel.app
+- pages.dev
+- web.app
+- firebaseapp.com
+- netlify.app
+- github.io
+- workers.dev
+- duckdns.org
+- ngrok.io
+- ngrok-free.app
+- xin
+- world
+- ink
+- pro
+- qpon
+- garden
+- wang

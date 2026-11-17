@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "ops_macros.html" as ops %}
+{% block title %}CyberCheck · CZDS{% endblock %}
+{% block page_id %}czds{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('ops.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ asset('ops.js') }}" defer></script>{% endblock %}
+
+{% macro zone_pill(st) -%}
+{%- set z = zone_state(st) -%}
+{{ ui.pill(z.label, z.tone, z.glyph, title=z.text or None) }}
+{%- endmacro %}
+{% macro took(s) -%}{{ '%.0fs' % s if s is not none else '-' }}{%- endmacro %}
+
+{% block flash %}
+{%- if not migrated %}{{ ui.flash("The CZDS tables do not exist yet: the worker creates them (migrations/060_czds.sql) when it starts.", "info") }}{% endif %}
+{%- if bad_tlds %}<div class="flash flash--warn" role="status"><span class="flash-glyph" aria-hidden="true">▲</span><span class="flash-text">{{ ui.pill("ignored", "red", "■") }} Not valid TLD names in CZDS_TLDS: <span class="dom">{{ bad_tlds | join(', ') }}</span></span></div>{% endif %}
+{%- if cctlds %}<div class="flash flash--info" role="status"><span class="flash-glyph" aria-hidden="true">●</span><span class="flash-text">{{ ui.pill("not in CZDS", "amber", "▲") }} <span class="dom">{{ cctlds | join(', ') }}</span>: country-code TLDs (such as .au and .cc) are not in CZDS. The CT log stream covers them.</span></div>{% endif %}
+{% endblock %}
+
+{% block body %}
+{{ ui.page_head("CZDS zone feed", sub="Daily zone files from ICANN's Centralized Zone Data Service. Names that are new in a zone are scored like certificate hostnames, which catches domains that never get a certificate.") }}
+
+<div class="ops-strip" role="group" aria-label="CZDS configuration">
+  {% if has_credentials %}{{ ui.health_pill('ok', 'CZDS credentials configured') }}{% else %}{{ ui.health_pill('down', 'no CZDS credentials') }}{% endif %}
+  <dl class="ops-facts">
+    <div><dt>CZDS_TLDS</dt><dd>{{ tlds | length }} TLD{{ '' if tlds | length == 1 else 's' }}</dd></div>
+    <div><dt>Download window</dt><dd>{{ window }}</dd></div>
+    <div><dt>Downloads</dt><dd>one per zone per 24 h</dd></div>
+    <div><dt>Zone lists on disk</dt><dd>{{ fmt_bytes(disk) }}</dd></div>
+  </dl>
+</div>
+
+{% if not has_credentials %}
+{% call ui.panel("Set up CZDS", id="setup") %}
+  <ol class="ops-steps">
+    <li>Apply for zone file access in the CZDS portal (see <code>docs/CZDS.md</code>).</li>
+    <li>Set <code>CZDS_USERNAME</code>, <code>CZDS_PASSWORD</code> and <code>CZDS_TLDS</code> in <code>.env</code>.</li>
+    <li>Restart the worker. The CZDS job is idle until then.</li>
+  </ol>
+{% endcall %}
+{% elif not tlds %}
+{{ ui.flash("CZDS_TLDS is empty, so no zone is downloaded. The job still lists which zones this account is approved for.", "info") }}
+{% endif %}
+
+{%- set n_approved = zones | selectattr('approved') | list | length %}
+{%- set n_hits = zones | map(attribute='hits') | select('number') | sum %}
+{% call ops.tiles("CZDS in numbers") %}
+  {{ ops.tile("configured zones approved", n_approved ~ " / " ~ (zones | length), "shield", tone="teal" if zones and n_approved == zones | length else None) }}
+  {{ ops.tile("new names in the latest files", fmt_int(zones | map(attribute='new_names') | select('number') | sum), "plus") }}
+  {{ ops.tile("hits from the latest files", fmt_int(n_hits), "alert", tone="amber" if n_hits else None, href="#hits") }}
+  {{ ops.tile("found first by CZDS, 24 h", fmt_int(stats.new_24h), "live", tone="teal" if stats.new_24h else None, hint=fmt_int(stats.new_7d) ~ " in 7 days") }}
+  {{ ops.tile("known from CT, newly delegated (7 days)", fmt_int(stats.known_7d), "layers") }}
+  {{ ops.tile("domains stored by CZDS (all time)", fmt_int(stats.stored_by_czds), "list") }}
+{% endcall %}
+
+{% call ui.panel("Zones", id="zones", sub="one row per TLD in CZDS_TLDS", flush=True) %}
+  {% if zone_summary %}
+  <ul class="ops-chips" aria-label="Zone states">
+    {% for g in zone_summary %}<li>{{ ui.pill(g.n ~ " " ~ g.text, g.tone, g.glyph) }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% call ui.table(["Zone", "State", "Approved", "Last download", "Last processed", "Next download", ("Names", "num"), ("New", "num"), ("Removed", "num"), ("Hits", "num"), ("File", "num"), ("Took", "num")], label="Zones") %}
+    {% for z in zones %}
+    {%- set zs = zone_state(z.status) %}
+    <tr class="ops-row--{{ zs.group }}">
+      <td class="dom nowrap">.{{ z.tld }}</td>
+      <td class="ops-state">{{ zone_pill(z.status) }}
+        {%- if zs.text %}<span class="ops-sub">{{ zs.text }}</span>{% endif %}
+        {%- if z.error %}<span class="ops-sub ops-err">{{ z.error }}</span>{% endif %}</td>
+      <td>{% if z.approved %}<span class="tone-teal"><span aria-hidden="true">✓ </span>yes</span>{% elif z.approved is none %}<span class="muted" title="Not checked yet">?</span>{% else %}<span class="muted"><span aria-hidden="true">○ </span>no</span>{% endif %}</td>
+      <td class="nowrap">{{ ui.ago(z.last_download) }}</td>
+      <td class="nowrap">{{ ui.ago(z.last_processed) }}</td>
+      <td class="nowrap">{% if z.next_due %}<time datetime="{{ z.next_due | iso }}" title="{{ z.next_due | utc }}">{{ fmt_until(z.next_due) }}</time><span class="ops-sub">{{ z.next_due | utc }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td class="num">{{ fmt_int(z.total_names) }}</td>
+      <td class="num">{{ fmt_int(z.new_names) }}</td>
+      <td class="num">{{ fmt_int(z.removed_names) }}</td>
+      <td class="num">{{ fmt_int(z.hits) }}{% if z.new_hits %} <span class="muted">({{ z.new_hits }} new)</span>{% endif %}</td>
+      <td class="num nowrap">{{ fmt_bytes(z.file_bytes) }}</td>
+      <td class="num">{{ took(z.duration_s) }}</td>
+    </tr>
+    {% else %}{{ ui.empty_row(12, "No zones configured. Add TLDs to CZDS_TLDS in .env and restart the worker.") }}{% endfor %}
+  {% endcall %}
+  {% if other_approved %}
+  <p class="ops-foot">Also approved for this account but not in CZDS_TLDS ({{ other_approved | length }}):
+    <span class="dom">{{ other_approved[:200] | join(', ') }}{% if other_approved | length > 200 %} …{% endif %}</span></p>
+  {% endif %}
+{% endcall %}
+
+{% call ui.panel("Recent CZDS hits", id="hits", sub="last 30 days", flush=True) %}
+  {% call ui.table(["When", "Tier", ("Score", "num"), "Domain", "Brand", "Found by", "Checks", "Status"], label="Recent CZDS hits", rows=True) %}
+    {% for r in hits %}
+    <tr data-href="/domain/{{ r.id }}">
+      <td class="nowrap">{{ ui.ago(r.czds_at) }}</td>
+      <td>{{ ui.tier_pill(r.tier) }}</td>
+      <td class="num nowrap">{{ r.score }}{% if r.final_score is not none %} <span class="muted" title="combined score">/ {{ r.final_score }}</span>{% endif %}</td>
+      <td>{{ ui.dom(r.registered_domain, r.unicode_domain, href="/domain/" ~ r.id) }}</td>
+      <td>{{ r.brand_id or '' }}</td>
+      <td class="nowrap">{% if r.source == 'czds' %}CZDS{% else %}<span class="muted">{{ r.source }} first, then CZDS</span>{% endif %}</td>
+      <td class="ops-checks">
+        {%- if r.dns_state and r.dns_state != 'unknown' %}<span class="muted">DNS {{ r.dns_state | replace('_', ' ') }}</span>{% endif %}
+        {%- if r.live_state and r.live_state != 'unknown' %} {{ ui.live_pill(r.live_state) }}{% endif %}
+        {%- if r.ai_verdict %} {{ ui.verdict_pill(r.ai_verdict) }}{% endif %}</td>
+      <td>{{ ui.status_pill(r.status) }}</td>
+    </tr>
+    {% else %}{{ ui.empty_row(8, "No CZDS hits in the last 30 days.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+
+<div class="grid-2">
+  {% call ui.panel("CZDS job", id="job", sub="starts about 90 seconds after the worker, then runs hourly") %}
+    {% if job %}
+    {% call ui.kv() %}
+      {% call ui.kv_item("Last run") %}{{ ui.ago(job_at) }} {{ ui.health_pill('ok', 'ok') if job.ok else ui.health_pill('error', 'failed') }}{% if job.duration_s is defined %} <span class="muted">took {{ job.duration_s }}s</span>{% endif %}{% endcall %}
+      {% if job.error %}{% call ui.kv_item("Error") %}<span class="tone-red">{{ job.error }}</span>{% endcall %}{% endif %}
+      {% if job.result %}{% call ui.kv_item("Result") %}<code class="ops-json">{{ job.result | tojson }}</code>{% endcall %}{% endif %}
+    {% endcall %}
+    {% else %}
+    {{ ui.empty("The czds job has not run yet.", "It starts about 90 seconds after the worker, then runs hourly.") }}
+    {% endif %}
+  {% endcall %}
+
+  {% call ui.panel("Zone data licence", id="licence") %}
+    <p>Zone files are licensed under the CZDS Terms &amp; Conditions. CyberCheck keeps only today's and the previous
+    day's list of names per zone on its own disk, shows only counts here, and never publishes zone data. Only
+    domains CyberCheck itself judged malicious can reach the public blocklist.</p>
+  {% endcall %}
+</div>
+
+{% call ui.panel("Recent files", id="runs", sub="each zone file the job downloaded or checked", flush=True) %}
+  {% call ui.table(["When", "Zone", "Result", ("Names", "num"), ("New", "num"), ("Removed", "num"), ("Hits", "num"), ("File", "num"), ("Took", "num"), "Detail"], label="Recent zone files", tall=True) %}
+    {% for r in runs %}
+    <tr class="ops-row--{{ zone_state(r.status).group }}">
+      <td class="nowrap">{{ ui.ago(r.at) }}</td>
+      <td class="dom nowrap">.{{ r.tld }}</td>
+      <td>{{ zone_pill(r.status) }}</td>
+      <td class="num">{{ fmt_int(r.total_names) }}</td>
+      <td class="num">{{ fmt_int(r.new_names) }}</td>
+      <td class="num">{{ fmt_int(r.removed_names) }}</td>
+      <td class="num">{{ fmt_int(r.hits) }}{% if r.new_hits %} <span class="muted">({{ r.new_hits }} new)</span>{% endif %}</td>
+      <td class="num nowrap">{{ fmt_bytes(r.file_bytes) }}</td>
+      <td class="num">{{ took(r.duration_s) }}</td>
+      <td class="ops-err">{{ r.error or '' }}</td>
+    </tr>
+    {% else %}{{ ui.empty_row(10, "No zone files processed yet.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

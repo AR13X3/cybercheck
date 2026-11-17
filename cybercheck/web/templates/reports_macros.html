@@ -1,0 +1,163 @@
+{#- Shared pieces of the /reports pages. Report text contains values taken from hostile pages: it is always
+    autoescaped, shown in text boxes, and reported URLs are never turned into links (only the official form
+    links from the channel catalogue are). No inline style, script or on* handlers: the CSP blocks them. -#}
+{% import "_ui.html" as ui %}
+
+{% set REPORT_STATUS = {
+  "pending_review": ("waiting for you", "amber", "▲"), "approved": ("queued", "outline", "○"),
+  "sending": ("sending", "teal", "●"), "sent": ("sent", "teal", "✓"), "failed": ("failed", "red", "■"),
+  "rejected": ("rejected", "muted", "○"), "skipped": ("skipped", "muted", "○")} %}
+{% set KIND = {"api": "API", "email": "email", "manual": "web form"} %}
+{% set VIA = {"api": "API", "smtp": "SMTP", "manual": "by hand"} %}
+
+{% macro status_pill(status) -%}
+{%- set s = REPORT_STATUS.get(status, (status or "unknown", "muted", "?")) -%}
+{{ ui.pill(s[0], s[1], s[2], title="Report status") }}
+{%- endmacro %}
+
+{% macro mode_pill(mode) -%}
+{%- set m = {"off": ("muted", "○"), "review": ("teal", "●"), "auto": ("amber", "▲")}.get(mode, ("muted", "?")) -%}
+{{ ui.pill(mode, m[0], m[1], title="REPORTING_MODE") }}
+{%- endmacro %}
+
+{% macro kind_label(kind) -%}{{ KIND.get(kind, kind or "") }}{%- endmacro %}
+{% macro via_label(via) -%}{{ VIA.get(via, via or "") }}{%- endmacro %}
+
+{% macro domain_link(r) -%}
+{{ ui.dom(r.registered_domain, r.unicode_domain, "/domain/" ~ r.domain_id) }}
+{%- endmacro %}
+
+{#- The step's tone as a sprite icon (amber: alert, red: danger, teal: done, anything else: unknown). -#}
+{% set STEP_ICON = {"amber": "alert", "red": "danger", "teal": "done"} %}
+{% macro step_icon(step, class_="") -%}
+{{ ui.icon(STEP_ICON.get(step.tone, "unknown"), class_) }}
+{%- endmacro %}
+
+{#- The one thing to do next (pages_reports.next_step), as a short hint on queue items. -#}
+{% macro step_hint(step) -%}
+{%- if step -%}<span class="rq-hint rq-hint--{{ step.tone }}">{{ step_icon(step, "rq-hint-ico") }}{{ step.title }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro auto_pill(r) -%}
+{%- if r.auto %}{{ ui.pill("automatic", "amber", "▲", title="Sent without a reviewer (REPORTING_MODE=auto)") }}{% endif -%}
+{%- endmacro %}
+
+{#- A small copy button for a field (app.js: data-copy-target). Hidden without JS. -#}
+{% macro copy_for(target, what, label="Copy") -%}
+<button type="button" class="btn btn--sm js-only rq-copy" hidden data-copy-target="{{ target }}" aria-label="Copy {{ what }}">{{ ui.icon("copy") }}<span class="rq-copy-text">{{ label }}</span></button>
+{%- endmacro %}
+
+{% macro reject_form(r, back="", label="Reject") -%}
+<form method="post" action="/reports/{{ r.id }}/reject" class="rq-reject" id="reject-{{ r.id }}">
+  <input type="hidden" name="back" value="{{ back }}">
+  <label class="visually-hidden" for="note{{ r.id }}">Reason for "{{ label }}" (optional)</label>
+  <input class="input" type="text" id="note{{ r.id }}" name="note" maxlength="300" placeholder="Reason (optional)" autocomplete="off">
+  <button type="submit" class="btn" {{ ui.confirm_attrs("Reject this report?", label, "danger", "It will not be sent, and CyberCheck will not create it again for this domain.") }}>{{ label }}</button>
+</form>
+{%- endmacro %}
+
+{#- Email draft form. external_primary: the step's primary button is drawn elsewhere (the detail page's
+    next-step box, using form="draft-<id>"), so it is left out here. -#}
+{% macro email_form(r, cfg, back="", external_primary=False, soft_max=1800, rows=16) -%}
+{%- set step = r.step or {} -%}
+{%- set can_approve = cfg.smtp and cfg.mode != 'off' and r.confirmed -%}
+<form method="post" action="/reports/{{ r.id }}/save" class="rq-draft" id="draft-{{ r.id }}" data-rq-draft>
+  {%- if not external_primary %}
+  {#- Enter in a field must not approve or mark anything: the default button is this disabled one. -#}
+  <button type="submit" disabled hidden aria-hidden="true" tabindex="-1">Enter does nothing here</button>
+  {%- endif %}
+  <input type="hidden" name="back" value="{{ back }}">
+  <div class="field">
+    <div class="rq-label-row"><label for="to{{ r.id }}">To</label>{{ copy_for("#to" ~ r.id, "the address") }}</div>
+    <input class="input rq-to" type="text" inputmode="email" spellcheck="false" id="to{{ r.id }}" name="to" value="{{ r.to }}" maxlength="254" placeholder="abuse address" autocomplete="off"
+      {%- if r.to_warning or r.payload.to_hint %} aria-describedby="to{{ r.id }}-note"{% endif %}>
+    {% if r.to_warning %}<div class="warn" id="to{{ r.id }}-note">{{ r.to_warning }}</div>
+    {% elif r.payload.to_hint %}<p class="hint" id="to{{ r.id }}-note">{{ r.payload.to_hint }}</p>{% endif %}
+  </div>
+  <div class="field">
+    <div class="rq-label-row"><label for="su{{ r.id }}">Subject</label>{{ copy_for("#su" ~ r.id, "the subject") }}</div>
+    <input class="input" type="text" id="su{{ r.id }}" name="subject" value="{{ r.subject }}" maxlength="200" autocomplete="off">
+  </div>
+  <div class="field">
+    <div class="rq-label-row"><label for="bo{{ r.id }}">Body (plain text)</label>{{ copy_for("#bo" ~ r.id, "the body", "Copy body") }}</div>
+    <textarea class="input rq-body" id="bo{{ r.id }}" name="body" rows="{{ rows }}" aria-describedby="bo{{ r.id }}-note"{% if external_primary %} data-shortcut="e" data-shortcut-label="Edit the email body"{% endif %}>{{ r.body }}</textarea>
+    <p class="hint" id="bo{{ r.id }}-note">
+      {%- if r.ai_note %}{{ r.ai_note[:1] | upper }}{{ r.ai_note[1:] }}. {% endif -%}
+      {%- if r.screenshot_url -%}
+        {%- if r.payload.attach_screenshot -%}
+          {%- if cfg.smtp %}The screenshot is attached when sent over SMTP; attach it yourself when you use your mail client.{% else %}Attach the screenshot in your mail client.{% endif -%}
+        {%- else %}This recipient asks for no screenshots.{% endif -%}
+      {%- endif -%}
+      {%- if r.body | length > soft_max %} Long body: some mail clients cut long mail links, so use Copy body instead.{% endif -%}
+    </p>
+  </div>
+  <p class="rq-dirty" hidden data-rq-dirty-note role="status"><span aria-hidden="true">▲</span> Unsaved changes. The mail-client link still uses the saved text, so save first.</p>
+  <div class="btn-row rq-actions">
+    {%- if can_approve and not (external_primary and step.action == 'approve') %}
+    {{ ui.button("Approve and send (SMTP)", kind="primary" if step.action == 'approve' else "", formaction="/reports/" ~ r.id ~ "/approve",
+                 confirm="Queue this email for sending?", confirm_ok="Approve and send",
+                 confirm_detail="The worker sends it over SMTP to the address in To within a few minutes, inside the hourly rate limit.") }}
+    {%- endif %}
+    {%- if r.mailto and not (external_primary and step.action == 'mailto') %}
+    <a class="btn{{ ' btn--primary' if step.action == 'mailto' }}" href="{{ r.mailto }}" data-rq-mailto="draft-{{ r.id }}">Open in my mail client</a>
+    {%- endif %}
+    {%- if not (external_primary and step.action == 'save') %}
+    {{ ui.button("Save draft", kind="primary" if step.action == 'save' else "", shortcut="s" if external_primary else None) }}
+    {%- endif %}
+    {{ ui.button("Mark as sent", formaction="/reports/" ~ r.id ~ "/sent", shortcut="m" if external_primary else None,
+                 confirm="Mark this email as sent?", confirm_ok="Mark as sent",
+                 confirm_detail="Only after you sent it yourself. The domain is then recorded as reported.") }}
+  </div>
+  {% if not r.mailto %}<p class="hint">Enter a valid address and save the draft to get a mail-client link.</p>{% endif %}
+  {% if not r.confirmed %}<p class="hint">The domain is no longer confirmed by a reviewer, so it cannot be approved for sending.</p>{% endif %}
+</form>
+{%- endmacro %}
+
+{#- A manual web-form item: the official link, then each prefilled field to paste, in order. -#}
+{% macro manual_body(r, back="", external_primary=False) -%}
+{% if r.notes %}<p class="rq-notes">{{ r.notes }}</p>{% endif %}
+<div class="rq-official">
+  <span class="rq-official-label">Official form</span>
+  {% if r.form_url %}
+  <span class="url" id="u{{ r.id }}">{{ r.form_url }}</span>
+  <span class="btn-row">
+    <a class="btn btn--sm" href="{{ r.form_url }}" target="_blank" rel="noopener noreferrer">Open the official form</a>
+    {{ copy_for("#u" ~ r.id, "the form link", "Copy link") }}
+  </span>
+  {% else %}<span class="muted">No official link on file: find the channel's own form.</span>{% endif %}
+</div>
+<ol class="rq-fields">
+  {% for f in r.fields %}
+  {%- set fid = "f" ~ r.id ~ "-" ~ loop.index %}
+  {%- set v = f.value | string if f.value is not none else "" %}
+  <li class="field rq-field">
+    <div class="rq-label-row"><label for="{{ fid }}"><span class="rq-n" aria-hidden="true">{{ loop.index }}</span>{{ f.label }}</label>{{ copy_for("#" ~ fid, f.label) }}</div>
+    <textarea class="input" id="{{ fid }}" readonly rows="{{ 1 if v | length < 90 and '\n' not in v else (4 if v | length < 400 else 8) }}" data-rq-field>{{ v }}</textarea>
+  </li>
+  {% endfor %}
+</ol>
+<div class="btn-row rq-tools">
+  <button type="button" class="btn btn--sm rq-copy" hidden data-rq-copy-all="r{{ r.id }}">{{ ui.icon("copy") }}<span class="rq-copy-text">Copy all fields</span></button>
+  {% if r.screenshot_url %}<a class="btn btn--quiet btn--sm" href="{{ r.screenshot_url }}" download>Download the screenshot (JPEG)</a><span class="hint">if the form asks for an image</span>{% endif %}
+</div>
+<div class="btn-row rq-actions">
+  {%- if not external_primary %}
+  <form method="post" action="/reports/{{ r.id }}/sent" class="inline">
+    <input type="hidden" name="back" value="{{ back }}">
+    {{ ui.button("Mark as done", kind="primary", confirm="Mark this web form as done?", confirm_ok="Mark as done",
+                 confirm_detail="Only after you submitted the official form. The domain is then recorded as reported.") }}
+  </form>
+  {%- endif %}
+  {{ reject_form(r, back, "Not applicable") }}
+</div>
+{%- endmacro %}
+
+{% macro row_actions(r, back="", small=True) -%}
+{% if r.kind in ('api', 'email') and r.status in ('failed', 'approved', 'skipped') and r.confirmed %}
+<form method="post" action="/reports/{{ r.id }}/retry" class="inline"><input type="hidden" name="back" value="{{ back }}">{{ ui.button('Send now' if r.status == 'approved' else 'Retry', kind='primary' if r.status == 'failed' else '', small=small) }}</form>
+{% endif %}
+{% if r.status in ('pending_review', 'approved', 'failed', 'skipped') %}
+{%- set label = 'Cancel' if r.status == 'approved' else 'Reject' %}
+<form method="post" action="/reports/{{ r.id }}/reject" class="inline"><input type="hidden" name="back" value="{{ back }}"><button type="submit" class="btn{{ ' btn--sm' if small }}" {{ ui.confirm_attrs(("Cancel sending this report?" if r.status == 'approved' else "Reject this report?"), label, "danger", "It will not be sent, and CyberCheck will not create it again for this domain.") }}>{{ label }}</button></form>
+{% endif %}
+{%- endmacro %}

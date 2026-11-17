@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "ops_macros.html" as ops %}
+{% from "reports_macros.html" import status_pill, mode_pill, kind_label, via_label, domain_link, step_hint, auto_pill,
+   email_form, manual_body, reject_form, row_actions, step_icon %}
+{% block title %}CyberCheck · Reports{% endblock %}
+{% block page_id %}reports{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('ops.css') }}"><link rel="stylesheet" href="{{ asset('reports.css') }}">{% endblock %}
+{% block flash %}{% if message %}{{ ui.flash(message, message_tone) }}{% endif %}{% endblock %}
+{% block body %}
+{%- set n = counts -%}
+{{ ui.page_head("Reports",
+     sub=("Nothing waits for you." if not n.todo else (n.todo ~ (" item waits" if n.todo == 1 else " items wait") ~ " for you: create, approve, file or retry them."))) }}
+
+<section class="panel rq-mode rq-mode--{{ cfg.mode }}" aria-labelledby="rq-mode-h">
+  <div class="panel-body rq-mode-body">
+    <div class="rq-mode-main">
+      <div class="rq-mode-head">
+        <h2 class="rq-mode-title" id="rq-mode-h">Mode: {{ mode_pill(cfg.mode) }}</h2>
+        <p class="rq-mode-text">{{ banner.text }}</p>
+      </div>
+      <ul class="rq-facts" aria-label="Sending">
+        <li class="rq-fact rq-fact--{{ 'teal' if cfg.smtp else 'amber' }}">
+          {{ ui.icon('done' if cfg.smtp else 'alert', 'rq-fact-ico') }}
+          {% if cfg.smtp %}<span>SMTP for approved emails: on, from <span class="dom">{{ cfg.smtp.sender }}</span></span>
+          {% else %}<span>SMTP for approved emails: off ({{ cfg.smtp_reason or 'SMTP is off' }}). Send drafts from your mail client.</span>{% endif %}
+        </li>
+        <li class="rq-fact rq-fact--{{ 'red' if used >= cfg.rate_per_hour else ('amber' if used * 10 >= cfg.rate_per_hour * 7 else 'muted') }}">
+          {{ ui.icon('clock', 'rq-fact-ico') }}<span>Rate limit: {{ used }} of {{ cfg.rate_per_hour }} sends in the last hour</span>
+        </li>
+        <li class="rq-fact rq-fact--{{ 'teal' if sandbox.ok else ('amber' if cfg.mode == 'auto' else 'muted') }}">
+          {{ ui.icon('shield' if sandbox.ok else ('alert' if cfg.mode == 'auto' else 'unknown'), 'rq-fact-ico') }}
+          <span>Sandbox verification {{ 'valid' if sandbox.ok else 'not valid' }}</span>
+        </li>
+        <li class="rq-fact rq-fact--{{ 'teal' if cfg.reporter_email else 'amber' }}">
+          {{ ui.icon('done' if cfg.reporter_email else 'alert', 'rq-fact-ico') }}
+          <span>{% if cfg.reporter_email %}Reporting as <span class="dom">{{ cfg.reporter_email }}</span>{% else %}REPORTER_EMAIL not set{% endif %}</span>
+        </li>
+        {% for ch, until in paused.items() %}
+        <li class="rq-fact rq-fact--amber">{{ ui.icon('pause', 'rq-fact-ico') }}<span>{{ ch }} asked us to slow down (HTTP 429): paused until {{ until | utc }}</span></li>
+        {% endfor %}
+        {% if job.last_run and job.ok is sameas false %}
+        <li class="rq-fact rq-fact--red rq-job">{{ ui.icon('danger', 'rq-fact-ico') }}<span>Worker job "report" <b>failed</b>: {{ job.error }}</span></li>
+        {% endif %}
+      </ul>
+    </div>
+    <div class="rq-mode-gauge">
+      {{ ui.gauge(used, cfg.rate_per_hour, "Sends in the last hour", sub="hourly limit, all channels", size="sm") }}
+    </div>
+  </div>
+</section>
+
+{% call ops.tiles("Report queue in numbers") %}
+  {{ ops.tile("email drafts to approve", n.drafts, "report", total=n.todo if n.drafts else None, tone="amber" if n.drafts else None, href="#drafts") }}
+  {{ ops.tile("web forms to file", n.manual, "list", total=n.todo if n.manual else None, tone="amber" if n.manual else None, href="#forms") }}
+  {{ ops.tile("confirmed, not reported", n.unreported, "alert", tone="amber" if n.unreported else None, href="#unreported" if n.unreported else "#todo") }}
+  {{ ops.tile("failed", n.failed, "danger", tone="red" if n.failed else None, href="#failed") }}
+  {{ ops.tile("queued for sending", n.queued, "clock", tone="teal" if n.queued else None, href="#queued") }}
+  {{ ops.tile("sent in 24 h", n.sent_24h, "done", tone="teal" if n.sent_24h else None, hint=(n.sent ~ " sent in total, " ~ n.domains_reported ~ " domain" ~ ('' if n.domains_reported == 1 else 's')), href="#sent") }}
+{% endcall %}
+
+{{ ui.tabs([("#todo", "To do", n.todo), ("#sending", "Sending", n.queued), ("#done", "Sent", n.sent),
+            ("#closed", "Closed", n.closed), ("#setup", "Setup")], active="#todo", label="Report queue") }}
+
+{#- ---- to do --------------------------------------------------------------------------------------- -#}
+<div class="rq-tab" id="todo">
+
+{% if unreported %}
+{% call ui.panel("Confirmed, not reported yet", id="unreported", sub=(unreported | length) ~ " domain" ~ ('s' if unreported | length != 1), flush=True) %}
+  <p class="rq-panel-note">The worker plans these within a minute{% if cfg.mode == 'off' %} (not while REPORTING_MODE=off){% endif %}. "Create reports" does it now.</p>
+  {% call ui.table(["Domain", "Brand", "Confirmed", ("Score", "num"), ("Action", "actions")], label="Confirmed domains without reports", rows=True, class_="table--cards") %}
+    {% for d in unreported %}
+    <tr>
+      <td class="card-title">{{ ui.dom(d.registered_domain, d.unicode_domain, "/domain/" ~ d.id) }}</td>
+      <td data-label="Brand">{{ d.brand_id or '-' }}</td>
+      <td class="nowrap" data-label="Confirmed">{{ ui.ago(d.status_changed_at) }}{% if d.status_by %} <span class="muted">by {{ d.status_by }}</span>{% endif %}</td>
+      <td class="num" data-label="Score">{{ d.final_score if d.final_score is not none else '-' }}</td>
+      <td class="actions">{{ ui.post_button("/reports/create/" ~ d.id, "Create reports", kind="primary", small=True) }}</td>
+    </tr>
+    {% endfor %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+
+{% call ui.panel("Email drafts to approve or send", id="drafts", sub=(n.drafts ~ " waiting" ~ (", first " ~ limit ~ " shown" if lists.drafts | length == limit else "")), class_="rq-list") %}
+  {% if lists.drafts %}
+  <p class="rq-panel-note">Check every fact against the domain page before sending. Edit freely: the text is yours once you save it.
+  {%- if cfg.smtp %} "Approve and send" queues it for the worker, which sends it over SMTP inside the rate limit.{% endif %}
+  "Open in my mail client" starts an email with the saved text; after sending it, press "Mark as sent".</p>
+  {% endif %}
+  {% for r in lists.drafts %}
+  <details class="rq-item" id="r{{ r.id }}"{{ ' open' if loop.index <= 2 }}>
+    <summary class="rq-sum">
+      <span class="rq-sum-ico" aria-hidden="true">{{ ui.icon("report") }}</span>
+      <span class="rq-sum-main"><span class="rq-chan">{{ r.label }}</span>{{ domain_link(r) }}</span>
+      <span class="rq-sum-to">
+        {%- if r.to_warning %}{{ ui.pill("address withheld", "red", "■", title="It may be the attacker's address") }}
+        {%- elif r.to %}<span class="dom">{{ r.to }}</span>
+        {%- else %}{{ ui.pill("no address yet", "amber", "▲") }}{% endif -%}
+      </span>
+      <span class="rq-sum-meta">{{ step_hint(r.step) }}<span class="muted">created {{ ui.ago(r.created_at) }}</span></span>
+    </summary>
+    <div class="rq-item-body">
+      {{ email_form(r, cfg, soft_max=mailto_soft_max, rows=14) }}
+      <div class="rq-item-foot">
+        {{ reject_form(r, "", "Reject draft") }}
+        <a class="rq-open" href="/reports/{{ r.id }}">Open the full report</a>
+      </div>
+    </div>
+  </details>
+  {% else %}
+  {{ ui.empty("No email drafts waiting.", "Drafts appear here when you confirm a domain as phishing.", "/review", "Open the review queue") }}
+  {% endfor %}
+{% endcall %}
+
+{% call ui.panel("Web forms to file by hand", id="forms", sub=(n.manual ~ " waiting" ~ (", first " ~ limit ~ " shown" if lists.manual | length == limit else "")), class_="rq-list") %}
+  {% if lists.manual %}
+  <p class="rq-panel-note">These channels take no automated reports. Open the official form, paste each field in order, submit it, then mark it as done. Never paste anything personal: some forms share the text with partner organisations.</p>
+  {% endif %}
+  {% for dom, items in lists.manual | groupby('registered_domain') %}
+  {%- set outer = loop %}
+  <section class="rq-group" aria-labelledby="mg{{ loop.index }}">
+    <h3 class="rq-group-title" id="mg{{ loop.index }}">{{ domain_link(items[0]) }}<span class="muted">{{ items | length }} form{{ 's' if items | length != 1 }}</span></h3>
+    {% for r in items %}
+    <details class="rq-item" id="r{{ r.id }}"{{ ' open' if outer.first and loop.index <= 2 }}>
+      <summary class="rq-sum">
+        <span class="rq-sum-ico" aria-hidden="true">{{ ui.icon("list") }}</span>
+        <span class="rq-sum-main"><span class="rq-chan">{{ r.label }}</span></span>
+        <span class="rq-sum-to">{{ r.fields | length }} field{{ 's' if r.fields | length != 1 }} to paste</span>
+        <span class="rq-sum-meta">{{ step_hint(r.step) }}<span class="muted">created {{ ui.ago(r.created_at) }}</span></span>
+      </summary>
+      <div class="rq-item-body">
+        {{ manual_body(r) }}
+        <div class="rq-item-foot"><a class="rq-open" href="/reports/{{ r.id }}">Open the full report</a></div>
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+  {% else %}
+  {{ ui.empty("No web forms waiting.", "Web forms are listed here when a confirmed domain has a channel that needs filing by hand.") }}
+  {% endfor %}
+{% endcall %}
+
+{% call ui.panel("Failed", id="failed", sub=(n.failed ~ " to retry or reject"), flush=True) %}
+  {% call ui.table(["Domain", "Channel", "Failed", ("Tries", "num"), "Error", ("Actions", "actions")], label="Failed reports", rows=True, class_="table--cards") %}
+    {% for r in lists.failed %}
+    <tr id="r{{ r.id }}">
+      <td class="card-title">{{ domain_link(r) }}</td>
+      <td data-label="Channel">{{ r.label }} {{ auto_pill(r) }}</td>
+      <td class="nowrap" data-label="Failed">{{ ui.ago(r.updated_at) }}</td>
+      <td class="num" data-label="Tries">{{ r.attempts }}</td>
+      <td class="rq-err card-wide" data-label="Error">{{ r.error or '' }}</td>
+      <td class="actions">{{ row_actions(r) }} <a class="btn btn--quiet btn--sm" href="/reports/{{ r.id }}">Details</a></td>
+    </tr>
+    {% else %}{{ ui.empty_row(6, "No failures.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+</div>
+
+{#- ---- sending --------------------------------------------------------------------------------------- -#}
+<div class="rq-tab" id="sending">
+{% call ui.panel("Queued for sending", id="queued", sub="the worker sends these inside the rate limit", flush=True) %}
+  {% call ui.table(["Domain", "Channel", "Status", "Next try", ("Tries", "num"), "Note", ("Actions", "actions")], label="Queued reports", rows=True) %}
+    {% for r in lists.queued %}
+    <tr id="r{{ r.id }}">
+      <td>{{ domain_link(r) }}</td>
+      <td>{{ r.label }} {{ auto_pill(r) }}</td>
+      <td>{{ status_pill(r.status) }}</td>
+      <td class="nowrap">{% if r.next_attempt_at and r.next_try != 'now' %}<time datetime="{{ r.next_attempt_at | iso }}" title="{{ r.next_attempt_at | utc }}">{{ r.next_try }}</time>{% else %}now{% endif %}</td>
+      <td class="num">{{ r.attempts }}</td>
+      <td class="muted">{{ r.error or '' }}</td>
+      <td class="actions">{{ row_actions(r) }} <a class="btn btn--quiet btn--sm" href="/reports/{{ r.id }}">Details</a></td>
+    </tr>
+    {% else %}{{ ui.empty_row(7, "Nothing queued. Approved emails and automated reports wait here until the worker sends them.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+</div>
+
+{#- ---- sent ------------------------------------------------------------------------------------------ -#}
+<div class="rq-tab" id="done">
+{% call ui.panel("Sent", id="sent", sub=("latest " ~ (lists.sent | length) if lists.sent else None), flush=True) %}
+  {% call ui.table(["Sent", "Domain", "Channel", "How", "Reference", "Channel's status", "Site"], label="Sent reports", rows=True) %}
+    {% for r in lists.sent %}
+    <tr id="r{{ r.id }}">
+      <td class="nowrap">{{ ui.ago(r.sent_at) }}</td>
+      <td>{{ domain_link(r) }}</td>
+      <td>{{ r.label }} {{ auto_pill(r) }}</td>
+      <td>{{ via_label(r.sent_via) }}{% if r.sent_by and r.sent_by != 'worker' %} <span class="muted">by {{ r.sent_by }}</span>{% endif %}</td>
+      <td class="dom"><a href="/reports/{{ r.id }}">{{ r.external_id or 'Details' }}</a></td>
+      <td class="muted">{{ r.netcraft or '-' }}</td>
+      <td class="nowrap">{% if r.takedown_at %}{{ ui.pill("taken down", "teal", "✓") }}{% else %}{{ ui.pill("awaiting takedown", "outline", "○", title="CyberCheck keeps checking the site") }}{% endif %}</td>
+    </tr>
+    {% else %}{{ ui.empty_row(7, "Nothing sent yet. Sent reports are listed here with each channel's takedown status.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+</div>
+
+{#- ---- closed ---------------------------------------------------------------------------------------- -#}
+<div class="rq-tab" id="closed">
+{% call ui.panel("Skipped or rejected", id="closed-list", sub=("latest " ~ (lists.closed | length) if lists.closed else None), flush=True) %}
+  {% call ui.table(["When", "Domain", "Channel", "Status", "Why", ("Actions", "actions")], label="Skipped or rejected reports", rows=True) %}
+    {% for r in lists.closed %}
+    <tr id="r{{ r.id }}">
+      <td class="nowrap">{{ ui.ago(r.updated_at) }}</td>
+      <td>{{ domain_link(r) }}</td>
+      <td>{{ r.label }}</td>
+      <td>{{ status_pill(r.status) }}</td>
+      <td class="muted">{{ r.error or (('by ' ~ r.reviewed_by) if r.reviewed_by else '') }}</td>
+      <td class="actions">{% if r.status == 'skipped' %}{{ row_actions(r) }}{% endif %} <a class="btn btn--quiet btn--sm" href="/reports/{{ r.id }}">Details</a></td>
+    </tr>
+    {% else %}{{ ui.empty_row(6, "None. Reports you reject, and reports the worker skips, are listed here.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+</div>
+
+{#- ---- setup ----------------------------------------------------------------------------------------- -#}
+<div class="rq-tab" id="setup">
+<div class="grid-2">
+{% call ui.panel("How reports go out") %}
+  {% call ui.kv() %}
+    {% call ui.kv_item("Rate limit") %}<p>{{ used }} of {{ cfg.rate_per_hour }} sends in the last hour (all channels, failed attempts count too), and at least {{ cfg.channel_min_interval_s }} s between sends on one channel. Reports over the limit wait in the queue; nothing is dropped.</p>{% endcall %}
+    {% call ui.kv_item("Automatic reports") %}<p>Mode auto only: combined score {{ cfg.min_final_score }}+, AI verdict phishing, credential fields on the newest snapshot, to automated channels only.</p>{% endcall %}
+    {% call ui.kv_item("Sandbox verification") %}{% if sandbox.ok %}<span class="pill t-ok">valid</span>{% else %}<span class="pill t-high">not valid</span>{% endif %} <span class="rq-kv-text">{{ sandbox.reason }}{% if sandbox.ok and sandbox.egress_country %}, egress {{ sandbox.egress_country }}{% endif %}</span>{% endcall %}
+    {% call ui.kv_item("Reporter identity") %}{% if cfg.reporter_email %}<span class="dom">{{ cfg.reporter_email }}</span>{% else %}<span class="tone-amber">not set</span><span class="rq-kv-text">: Netcraft stays off and email signatures need your contact details</span>{% endif %}{% endcall %}
+    {% call ui.kv_item("SMTP") %}{% if cfg.smtp %}on, from <span class="dom">{{ cfg.smtp.sender }}</span> via {{ cfg.smtp.host }}:{{ cfg.smtp.port }}{% else %}off ({{ cfg.smtp_reason }}): send approved drafts from your mail client and mark them as sent{% endif %}{% endcall %}
+    {% call ui.kv_item("Worker job") %}<span class="rq-job">"report": {% if job.last_run %}last run {{ ui.ago(job.last_run) }}{% if job.ok is sameas false %}, <b>failed</b>: {{ job.error }}{% elif job.result %}<span class="rq-kv-text">: {% for k, v in job.result.items() %}{{ k }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}{% else %}has not run yet{% endif %}</span>{% endcall %}
+  {% endcall %}
+{% endcall %}
+
+{% call ui.panel("Off, and why", sub=((banner.disabled | length) ~ " items") if banner.disabled else "everything is on", flush=True) %}
+  {% if banner.disabled %}
+  {% call ui.table(["What", "Why"], label="Channels and features that are off") %}
+    {% for what, why in banner.disabled %}<tr><td class="rq-what">{{ what }}</td><td class="muted rq-why">{{ why }}</td></tr>{% endfor %}
+  {% endcall %}
+  {% else %}<p class="rq-panel-note">Every channel and feature is on.</p>{% endif %}
+{% endcall %}
+</div>
+
+{% call ui.panel("Per channel", flush=True) %}
+  {% call ui.table(["Channel", "Kind", ("Waiting for you", "num"), ("Queued", "num"), ("Sent", "num"), ("Failed", "num"), ("Rejected", "num"), ("Skipped", "num"), "Last sent"], label="Reports per channel") %}
+    {% for c in per_channel %}
+    <tr><td>{{ c.label }}</td><td class="muted">{{ kind_label(c.kind) }}</td><td class="num">{{ c.pending }}</td><td class="num">{{ c.queued }}</td>
+        <td class="num">{{ c.sent }}</td><td class="num">{{ c.failed }}</td><td class="num">{{ c.rejected }}</td><td class="num">{{ c.skipped }}</td>
+        <td class="nowrap">{{ ui.ago(c.last_sent) }}</td></tr>
+    {% else %}{{ ui.empty_row(9, "No reports yet.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+
+<details class="rq-more panel">
+  <summary class="panel-head"><span class="panel-title">Channels from the research that are not used, and why</span></summary>
+  {% call ui.table(["Channel", "Why not"], label="Channels not used") %}
+    {% for name, why, source in not_used %}<tr><td class="rq-what">{{ name }}</td><td class="muted rq-why">{{ why }} <span class="dom">{{ source }}</span></td></tr>{% endfor %}
+  {% endcall %}
+</details>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('reports.js') }}" defer></script>{% endblock %}

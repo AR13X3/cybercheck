@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% from "_row.html" import asks_list, ai_block, score_block, why_block, blocklist_block, hostnames_block, shots_block, exact_name, lifecycle %}
+{% block title %}CyberCheck · {{ d.registered_domain }}{% endblock %}
+{% block body_class %}page-domain{% endblock %}
+{% block page_id %}domain{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('triage.css') }}">{% endblock %}
+{% block body %}
+{%- set LABEL = {'open': 'Reopen', 'confirmed': 'Confirm phishing', 'false_positive': 'Mark false positive', 'benign': 'Mark benign / parked'} -%}
+{%- set KEY = {'confirmed': 'c', 'false_positive': 'f', 'benign': 'b', 'open': 'u'} -%}
+{%- set BTN = {'open': 'btn--reopen', 'false_positive': 'btn--fp', 'benign': 'btn--benign'} -%}
+
+<header class="page-head dom-head">
+  <div class="page-head-text">
+    <p class="page-back"><a href="/review">Back to the review queue</a>{% if nav_q.pos %} <span class="muted">({{ nav_q.pos }} of {{ nav_q.total }})</span>{% endif %}</p>
+    <h1 class="dom-h1"><span class="dom">{{ d.registered_domain }}</span></h1>
+    {% if d.unicode_domain %}<p class="dom-idn">Displayed as: <span class="dom">{{ d.unicode_domain }}</span></p>{% endif %}
+    {{ exact_name(d.registered_domain) }}
+    <p class="ev-pills">{{ ui.tier_pill(d.tier) }} {{ ui.status_pill(d.status) }} {{ ui.live_pill(d.live_state) }} {{ ui.verdict_pill(d.ai_verdict, d.ai_confidence) }}{% if d.brand_id %} <span class="ev-brand-l">brand</span> <span class="ev-brand">{{ d.brand_id }}</span>{% endif %}</p>
+  </div>
+  <div class="page-actions">
+    {{ ui.copy_button(d.registered_domain, label="Copy domain") }}
+    {% if nav_q.prev %}{{ ui.link_button("Previous in queue", "/domain/" ~ nav_q.prev, small=True, shortcut="[") }}{% endif %}
+    {% if nav_q.next %}{{ ui.link_button("Next in queue", "/domain/" ~ nav_q.next, small=True, shortcut="]") }}{% endif %}
+  </div>
+</header>
+
+{#- ---- verdict: the decision, or what the evidence says while it waits for one, with the score ring and the
+     domain's way through the pipeline ---------------------------------------------------------------- -#}
+{%- if d.status == 'confirmed' -%}{% set tone, kind, line = 'red', 'danger', 'Confirmed phishing' %}
+{%- elif d.status in ('false_positive', 'benign') -%}{% set tone, kind, line = 'teal', 'protected', ('Marked false positive' if d.status == 'false_positive' else 'Marked benign or parked') %}
+{%- elif d.final_score is not none and d.final_score >= 90 -%}{% set tone, kind, line = 'red', 'danger', 'Strong evidence of phishing. Waiting for your decision.' %}
+{%- else -%}{% set tone, kind, line = 'amber', 'alert', 'Waiting for your decision.' %}{%- endif %}
+{%- set sc = d.final_score if d.final_score is not none else d.score %}
+<section class="verdict verdict--{{ tone }}" aria-labelledby="verdict-h">
+  <div class="verdict-score">
+    {{ ui.gauge(sc, 100, 'Combined score' if d.final_score is not none else 'Domain-name score', shown_total="100") }}
+  </div>
+  <div class="verdict-main">
+    <div class="verdict-top">
+      {{ ui.badge(kind, line, size="lg", class_="verdict-badge") }}
+      <div class="verdict-text">
+        <h2 class="verdict-line" id="verdict-h">{{ line }}</h2>
+        {%- if d.status != 'open' and (d.status_by or d.status_changed_at) %}
+        <p class="verdict-sub">By {{ d.status_by or 'unknown' }}{% if d.status_changed_at %}, {{ ui.ago(d.status_changed_at) }}{% endif %}.</p>
+        {%- endif %}
+        {%- if d.takedown_at %}<p class="verdict-sub">{{ ui.pill("taken down", "teal", "✓") }} {{ ui.ago(d.takedown_at) }} ({{ d.takedown_signal }})</p>{% endif %}
+      </div>
+    </div>
+    <ul class="verdict-signals">
+      <li>{{ ui.verdict_pill(d.ai_verdict, d.ai_confidence) }}</li>
+      <li>{{ ui.live_pill(d.live_state) }}</li>
+      {%- for a in ev.asks %}<li>{{ ui.pill("asks for " ~ a.label, "red" if a.key != 'personal_info' else "amber", "■" if a.key != 'personal_info' else "▲") }}</li>{% endfor %}
+      {%- if d.reported_at %}<li>{{ ui.pill("reported", "outline", "●") }}</li>{% endif %}
+      {%- if d.blocklisted %}<li>{{ ui.pill("blocklisted", "red", "■") }}</li>{% endif %}
+    </ul>
+    {{ lifecycle(d, ev) }}
+  </div>
+</section>
+
+{#- ---- decision bar (fixed at the bottom on phones) --------------------------------------------------- -#}
+<form method="post" action="/domain/{{ d.id }}/status" class="decision decision-bar" aria-label="Decision">
+  {# Pressing Enter in the note field uses the form's first submit button: this disabled one, so Enter never
+     submits a decision by accident (in particular not "Confirm phishing"). #}
+  <button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+  <div class="field decision-note">
+    <label for="f-note">Note <span class="muted">(optional, saved with your decision)</span></label>
+    <input class="input" type="text" id="f-note" name="note" maxlength="2000" autocomplete="off" placeholder="What did you see?" data-shortcut="n" data-shortcut-label="Write a note">
+  </div>
+  <div class="decision-buttons">
+    {%- for s in statuses if s != 'open' or d.status != 'open' %}
+    {%- if s == 'confirmed' %}
+    <button type="submit" class="btn btn--danger btn--confirm" name="status" value="confirmed"{{ ' disabled' if d.status == s or ev.official }}
+      {%- if ev.official %} aria-describedby="official-note"{% else %} {{ ui.confirm_attrs("Confirm " ~ d.registered_domain ~ " as phishing?", ok="Confirm phishing", tone="danger",
+         detail="This creates report drafts: within a minute the worker queues the automated Netcraft report and drafts the abuse emails on the Reports page. The blocklist is rebuilt" ~ ((" with the whole domain" if bl_scope.wildcard else " with only the hostnames seen") if bl_scope else "") ~ ".") }} data-confirm-title="Confirm phishing"{% endif %}
+      data-shortcut="c" aria-keyshortcuts="c">{{ LABEL[s] }}<kbd class="btn-kbd" aria-hidden="true">c</kbd></button>
+    {%- else %}
+    <button type="submit" class="btn {{ BTN[s] }}" name="status" value="{{ s }}"{{ ' disabled' if d.status == s }} data-shortcut="{{ KEY[s] }}" aria-keyshortcuts="{{ KEY[s] }}">{{ LABEL[s] }}<kbd class="btn-kbd" aria-hidden="true">{{ KEY[s] }}</kbd></button>
+    {%- endif %}
+    {%- endfor %}
+  </div>
+  {%- if ev.official %}
+  <p class="hint decision-official" id="official-note">{{ ui.icon('alert', 'tone-amber') }} {{ d.registered_domain }} is an official brand domain or on the allowlist, so it cannot be confirmed as phishing. If a page on it was compromised, tell the brand directly.</p>
+  {%- endif %}
+  <details class="decision-help">
+    <summary>Which decision fits?</summary>
+    <dl>
+      <dt>Confirm phishing</dt><dd>The page impersonates the brand to take logins, codes, card or identity details. Reports are drafted and the domain is blocklisted.</dd>
+      <dt>False positive</dt><dd>The name matched a brand, but the site has nothing to do with it (a real business, a different meaning of the word).</dd>
+      <dt>Benign / parked</dt><dd>A parked, empty or for-sale page that is not phishing today. It stays watched and comes back if it changes.</dd>
+      <dt>Reopen</dt><dd>Puts a decided domain back in the review queue.</dd>
+    </dl>
+  </details>
+</form>
+
+{#- ---- evidence first: screenshot, then what the page asks for, the AI verdict and the score ---------- -#}
+<div class="ev-grid">
+  <div class="ev-main">
+    {% call ui.panel("Latest screenshot", id="p-shot", sub=(ev.pages | length ~ " snapshot" ~ ('' if ev.pages | length == 1 else 's')) if ev.pages else None) %}{{ shots_block(ev) }}{% endcall %}
+  </div>
+  <div class="ev-side">
+    {% call ui.panel("AI verdict", id="p-ai", class_="panel--ai") %}{{ ai_block(d, ev.ai) }}{% endcall %}
+    {% call ui.panel("What the page asks for", id="p-asks") %}{{ asks_list(ev.asks, "Nothing seen yet." if not ev.pages else "Nothing: the snapshots show no password, code or card fields.") }}{% endcall %}
+    {% call ui.panel("Combined score (domain + page + AI)", id="p-score") %}{{ score_block(d) }}{% endcall %}
+  </div>
+</div>
+
+<div class="grid-2">
+  <div>
+    {% call ui.panel("Why it was flagged", id="p-why", sub="domain-name score " ~ d.score) %}{{ why_block(d) }}{% endcall %}
+    {% if d.ai_triage %}
+    {% call ui.panel("AI name triage", id="p-triage", class_="panel--ai") %}
+      <p>{{ d.ai_triage.assessment }}{% if d.ai_triage.likely_target %}, likely target: {{ d.ai_triage.likely_target }}{% endif %}</p>
+      {% if d.ai_triage.reason %}<p class="muted">{{ d.ai_triage.reason }}</p>{% endif %}
+    {% endcall %}
+    {% endif %}
+    {% call ui.panel("Hostnames seen (" ~ d.sightings ~ " sightings)", id="p-hosts") %}{{ hostnames_block(d) }}{% endcall %}
+  </div>
+  <div>
+    {% call ui.panel("Details", id="p-details") %}
+    {% call ui.kv() %}
+      {% call ui.kv_item("Brand") %}{{ d.brand_id or '-' }}{% endcall %}
+      {% if d.status_by %}{% call ui.kv_item("Decision") %}{{ d.status }} by {{ d.status_by }}{% if d.status_changed_at %}, {{ ui.ago(d.status_changed_at) }}{% endif %}{% endcall %}{% endif %}
+      {% if d.notes %}{% call ui.kv_item("Notes") %}<span class="notes">{{ d.notes }}</span>{% endcall %}{% endif %}
+      {% call ui.kv_item("First seen") %}{{ d.first_seen | utc }} ({{ ui.ago(d.first_seen) }}) via {{ d.source }}{% endcall %}
+      {% call ui.kv_item("Certificate") %}{{ d.issuer or '-' }}, log {{ d.ct_log or '-' }}{% endcall %}
+      {% call ui.kv_item("DNS") %}{{ d.dns_state }} {{ d.ips | join(', ') }}{% endcall %}
+      {% call ui.kv_item("Hosting") %}{% if d.asn %}AS{{ d.asn }} {{ d.as_name or '' }} {{ d.ip_country or '' }}{% else %}-{% endif %}{% endcall %}
+      {% call ui.kv_item("Registrar") %}{{ d.registrar or '-' }}{% if d.registered_at %}, registered {{ d.registered_at | utc('%Y-%m-%d') }}{% endif %}{% endcall %}
+      {% call ui.kv_item("Abuse contacts") %}registrar {{ d.registrar_abuse_email or '-' }}, hosting {{ d.hosting_abuse_email or '-' }}{% endcall %}
+      {% call ui.kv_item("RDAP status") %}{{ d.rdap_status | join(', ') or '-' }}{% endcall %}
+      {% call ui.kv_item("Live") %}{{ d.live_state }}{% if d.first_live_at %}, first live {{ ui.ago(d.first_live_at) }}{% endif %}{% endcall %}
+      {% call ui.kv_item("Reported") %}{{ ui.ago(d.reported_at) }}{% endcall %}
+      {% call ui.kv_item("Taken down") %}{% if d.takedown_at %}{{ ui.ago(d.takedown_at) }} ({{ d.takedown_signal }}){% elif d.enrich_state and d.enrich_state.pending %}<span class="muted">possible takedown, confirming on next check</span>{% else %}-{% endif %}{% endcall %}
+      {% call ui.kv_item("Next check") %}{{ d.next_check_at | utc if d.next_check_at else '-' }}, watched until {{ d.watch_until | utc('%Y-%m-%d') if d.watch_until else '-' }}{% endcall %}
+    {% endcall %}
+    {% endcall %}
+    {% call ui.panel("Blocklist", id="p-bl") %}
+      {{ blocklist_block(d, bl_scope) }}
+      {%- if d.blocklisted %}
+      <form method="post" action="/blocklist/{{ d.id }}/exclude" class="bl-form">
+        {{ ui.field("Why remove it (optional)", "note", id="bl-note", maxlength=500, placeholder="for example: the brand's own campaign site") }}
+        {{ ui.button("Remove and exclude", kind="", confirm="Remove " ~ d.registered_domain ~ " from the blocklist and keep it out?", confirm_ok="Remove and exclude") }}
+      </form>
+      {%- elif d.blocklist_excluded %}
+      <form method="post" action="/blocklist/{{ d.id }}/include" class="bl-form">{{ ui.button("Lift exclusion") }}</form>
+      {%- endif %}
+    {% endcall %}
+  </div>
+</div>
+
+{% if pages %}
+{% call ui.panel("Page snapshots", id="p-pages", sub=pages | length ~ " newest first") %}
+<div class="snapshots">
+{% for p in pages %}
+  <article class="snapshot">
+    <div class="snapshot-shot">
+      {%- if p.screenshot_path %}{{ ui.shot(p.id, "Screenshot of " ~ (p.final_url or p.url), caption=((p.user_agent_profile or 'desktop') | capitalize) ~ ", " ~ (p.fetched_at | utc), profile=p.user_agent_profile) }}
+      {%- else %}<p class="muted ev-none">No screenshot{% if p.error %}: {{ p.error }}{% endif %}</p>{% endif %}
+    </div>
+    {% call ui.kv() %}
+      {% call ui.kv_item("Fetched") %}{{ ui.ago(p.fetched_at) }}, {{ p.user_agent_profile or '' }}, via {{ p.egress_ip or '?' }}{% endcall %}
+      {% call ui.kv_item("URL") %}{{ ui.url_text(p.url) }}{% if p.final_url and p.final_url != p.url %}<span class="redirect"><span class="muted">redirected to</span> {{ ui.url_text(p.final_url) }}</span>{% endif %}{% endcall %}
+      {% call ui.kv_item("HTTP") %}{{ p.http_status or '-' }}, {{ p.title or '' }}{% endcall %}
+      {% call ui.kv_item("Asks for") %}{% if p.has_password_field %}password {% endif %}{% if p.has_otp_field %}one-time code {% endif %}{% if p.has_card_field %}card details{% endif %}{% if not (p.has_password_field or p.has_otp_field or p.has_card_field) %}<span class="muted">-</span>{% endif %}{% endcall %}
+      {% call ui.kv_item("Forms post to") %}{% for a in p.form_actions %}{{ ui.url_text(a) }} {% else %}-{% endfor %}{% endcall %}
+      {% call ui.kv_item("Brand mentions") %}{{ p.brand_mentions | join(', ') or '-' }}{% endcall %}
+      {% if p.ai_result and p.ai_result.verdict %}{% call ui.kv_item("AI") %}{{ ui.verdict_pill(p.ai_result.verdict, p.ai_result.confidence) }}{% endcall %}{% endif %}
+      {% call ui.kv_item("Kept") %}{% if p.is_evidence %}evidence (kept){% else %}until {{ p.retain_until | utc('%Y-%m-%d') if p.retain_until else '-' }}{% endif %}{% endcall %}
+    {% endcall %}
+  </article>
+{% endfor %}
+</div>
+{% endcall %}
+{% endif %}
+
+{% if ai %}
+{% call ui.panel("AI checks", id="p-aicalls", flush=True, class_="panel--ai") %}
+{% call ui.table(["When", "Purpose", "Model", "Result", ("Cost", "num")], label="AI checks") %}
+  {% for a in ai %}<tr><td class="muted nowrap">{{ ui.ago(a.at) }}</td><td>{{ a.purpose }}</td><td>{{ a.model }}</td>
+  <td class="sans">{% if a.error %}<span class="muted">{{ a.error }}</span>{% else %}{{ a.result.verdict if a.result and a.result.verdict else '' }} {{ a.result.explanation if a.result and a.result.explanation else '' }}{% endif %}</td>
+  <td class="num">${{ '%.4f' % a.cost_usd }}</td></tr>{% endfor %}
+{% endcall %}
+{% endcall %}
+{% endif %}
+
+{% if reports %}
+{% call ui.panel("Reports", id="p-reports", flush=True, more_href="/reports", more_label="Open reports") %}
+{% call ui.table(["Channel", "Status", "Created", "Sent", "Detail"], label="Reports") %}
+  {% for r in reports %}<tr><td>{{ r.channel }}{% if r.auto %} <span class="muted">(auto)</span>{% endif %}</td><td>{{ r.status }}</td><td class="muted nowrap">{{ ui.ago(r.created_at) }}</td><td class="muted nowrap">{{ ui.ago(r.sent_at) }}</td><td class="muted">{{ r.error or r.external_id or '' }}</td></tr>{% endfor %}
+{% endcall %}
+{% endcall %}
+{% endif %}
+
+{#- ---- timeline as a vertical log ------------------------------------------------------------------ -#}
+{% set TL_TONE = {"first_seen": "teal", "went_live": "red", "page_down": "muted", "ai_verdict": "violet", "status": "amber",
+                  "reported": "teal", "taken_down": "teal", "blocklisted": "red", "unblocklisted": "muted",
+                  "reappeared": "red", "nxdomain": "muted", "dns_resolves": "amber"} %}
+{% call ui.panel("Timeline", id="p-timeline", sub=events | length ~ " events, oldest first") %}
+<ol class="timeline">
+  {% for e in events %}
+  {%- set tone = TL_TONE.get(e.kind, "muted") %}
+  <li class="tl tl--{{ tone }}">
+    <span class="tl-dot" aria-hidden="true"></span>
+    <time class="tl-time" datetime="{{ e.at | iso }}" data-abs>{{ e.at | utc('%Y-%m-%d %H:%M') }}</time>
+    <span class="tl-kind">{{ e.kind }}</span>
+    {%- if e.detail %}
+    <span class="tl-detail">{% for k, v in e.detail.items() if v not in (none, '', [], {}) %}<span class="tl-kv"><span class="tl-k">{{ k }}</span>=<span class="tl-v">{{ v if v is string else v | tojson }}</span></span>{% endfor %}</span>
+    {%- endif %}
+  </li>
+  {% else %}
+  <li class="tl tl--muted"><span class="tl-dot" aria-hidden="true"></span><span class="muted">No events yet.</span></li>
+  {% endfor %}
+</ol>
+{% endcall %}
+
+{% if checks %}
+{% call ui.panel("Recent checks", id="p-checks", flush=True) %}
+{% call ui.table(["When", "Check", "Result", "Detail"], label="Recent checks") %}
+  {% for c in checks %}<tr><td class="muted nowrap">{{ c.at | utc('%Y-%m-%d %H:%M') }}</td><td>{{ c.kind }}</td><td>{% if c.ok %}{{ ui.pill("ok", "teal", "●") }}{% elif c.ok is not none %}{{ ui.pill("fail", "amber", "▲") }}{% endif %}</td><td class="muted check-detail">{{ c.result | tojson | truncate(300) }}</td></tr>{% endfor %}
+{% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ asset('triage.js') }}" defer></script>{% endblock %}

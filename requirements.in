@@ -1,0 +1,16 @@
+websockets
+orjson
+psycopg[binary]
+psycopg-pool
+pyyaml
+publicsuffixlist
+pyahocorasick
+fastapi
+uvicorn
+jinja2
+python-multipart
+httpx
+dnspython
+anthropic
+pillow
+pytest

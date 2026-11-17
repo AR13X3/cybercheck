@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest an improvement or a new feature.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Proposing a **new reporting channel**? CONTRIBUTING.md lists what we need: links to the channel's own
+        documentation showing it accepts third-party reports, whether it allows automated submissions, and its
+        rate limits and data handling.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Your proposal
+      description: What should CyberCheck do? Mention settings, dashboard pages or reporting channels it would touch.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and cost
+      description: Could this cause false reports, contact suspicious sites outside the fetcher, query .au WHOIS/RDAP, raise AI spend, or expose data? How would you prevent that?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

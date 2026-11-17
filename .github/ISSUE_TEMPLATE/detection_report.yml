@@ -1,0 +1,69 @@
+name: False positive or missed phishing
+description: CyberCheck flagged a legitimate site, or missed a phishing site it should have caught.
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form improves the watchlist and scoring. It does not get a site taken down: report live phishing
+        to Scamwatch and the impersonated organisation as well.
+
+        **Do not paste live phishing URLs unredacted.** Defang every URL and domain, for example
+        `hxxps://commbank-login[.]example/verify`, so nobody clicks it by accident and it is not indexed.
+
+        **Do not post personal data**: no screenshots or text that show a victim's details, no credentials, no
+        phishing messages with someone's name or number in them. No CZDS zone data.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of report is this?
+      options:
+        - False positive (a legitimate site was flagged)
+        - Missed phishing (a phishing site was not flagged, or scored too low)
+        - Wrong brand or tier
+    validations:
+      required: true
+  - type: input
+    id: hostname
+    attributes:
+      label: Hostname (defanged)
+      description: The full hostname, defanged. For a false positive on a legitimate site, the plain hostname is fine.
+      placeholder: login.commbank-secure[.]example
+    validations:
+      required: true
+  - type: input
+    id: brand
+    attributes:
+      label: Brand
+      description: The organisation it impersonates (or is mistaken for). Use the watchlist id if you know it, for example `auspost`.
+  - type: textarea
+    id: score
+    attributes:
+      label: What CyberCheck said
+      description: Score, tier and reasons, from the domain page or `docker compose run --rm --no-deps ingest score <hostname>`. Write "not flagged" if it was not stored.
+      render: text
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Why it is legitimate, or why it is phishing
+      description: |
+        For a false positive: who runs the site, and a link to the organisation's OWN website that shows the
+        domain is theirs (required for any change to official_domains).
+        For missed phishing: what the page did (asked for a password, card details, a one-time code), and where
+        you saw it (an SMS, an email, a search ad). Do not include anyone's personal details.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested fix (optional)
+      description: A keyword, bait word, exclude entry or official domain to add, and the hostnames that should and should not match.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: Every phishing URL and domain above is defanged.
+          required: true
+        - label: I included no personal data, credentials or CZDS zone data.
+          required: true

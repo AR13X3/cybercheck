@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/AR13X3/cybercheck/security/advisories/new
+    about: Please do not open a public issue for security problems. See SECURITY.md.
+  - name: Report a live phishing site to Scamwatch
+    url: https://www.scamwatch.gov.au/report-a-scam
+    about: An issue here only improves CyberCheck's detection. To get a site taken down, report it to Scamwatch and the impersonated organisation too.

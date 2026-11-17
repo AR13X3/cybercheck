@@ -1,0 +1,423 @@
+# CyberCheck - where to report phishing that targets Australian brands and Australians
+# Fact-checked 2026-11-15 against the official pages named in each `source`.
+# Rule: an entry is listed only if its address or URL was seen on the brand's or agency's own
+# official page during this check. automated_ok is true only where the channel itself
+# explicitly supports machine-to-machine submission.
+#
+# NOT listed on purpose (could not be confirmed on an official page on 2026-11-15; see the .md):
+#   - DHL Australia phishing@dhl.com (dhl.com did not load; seen only in a search-engine summary;
+#     DHL's global leaflet uses phishing-dpdhl@dhl.com)
+#   - PayPal phishing@paypal.com.au (paypal.com/au/security page returned 403; the AU help page shows phishing@paypal.com, listed below)
+#   - ubank phish@nab.com.au / phish@ubank.com.au (ubank pages returned 403 or did not load)
+#   - AGL spam@agl.com.au (no official page found)
+#   - report@phishing.gov.au and report@cyber.gov.au (no evidence they exist)
+#   - assist@asd.gov.au (appears only as a hidden page-feedback field on cyber.gov.au, not as a reporting channel)
+#   - Westpac vulnerability@westpac.com.au (not on the cited page)
+channels:
+  # ---------------- GOVERNMENT ----------------
+  - id: scamwatch-report-website
+    name: Scamwatch - Report a scam website (National Anti-Scam Centre, ACCC)
+    scope: government
+    brand_id: null
+    method: web_form
+    address_or_url: https://forms.scamwatch.gov.au/report-a-scamwebsite/
+    automated_ok: false
+    source: https://www.scamwatch.gov.au/report-a-scam
+    notes: "Reached from the Scamwatch report page under 'Are you reporting a website?' (answer No to money stolen and No to investment scam). The page says 'We're testing ways to make it quicker and easier to report a scam. Help us take down scam websites from social media and search results.' Two required fields: Website URL and 'What makes the website a scam?'. The form warns that the ACCC may share the text with partner agencies and organisations and that you must not include personal details. Google reCAPTCHA plus a 'Leave this field blank' honeypot. Nothing about bulk, API or rate limits. Manual only."
+  - id: scamwatch-report
+    name: Scamwatch - Report a scam (full form)
+    scope: government
+    brand_id: null
+    method: web_form
+    address_or_url: https://portal.scamwatch.gov.au/report-a-scam/
+    automated_ok: false
+    source: https://www.scamwatch.gov.au/report-a-scam
+    notes: "Steps: Introduction, About the scam, About you, Preview & submit, Complete. 'We can't respond to reports made through this form.' Not a police report. Asks for scam details, contact details, times and screenshots or attachments. With consent, reports are used to 'work with organisations and remove scam websites, scam ads and contact details'. Manual only."
+  - id: nasc-enquiry
+    name: National Anti-Scam Centre - business/government enquiry (ask about data sharing)
+    scope: government
+    brand_id: null
+    method: web_form
+    address_or_url: https://forms.scamwatch.gov.au/contact-us/
+    automated_ok: false
+    source: https://www.nasc.gov.au/what-we-do/contact-us
+    notes: "Not a reporting channel: the form says 'Do not report a scam through this form' and 'we can't respond to everyone'. Reason options include 'Make a business, government or other enquiry'. Use it only to ask whether CyberCheck could join a data-sharing arrangement. The NASC runs a scam website takedown service covering phishing and online shopping scams (https://www.nasc.gov.au/what-we-do/disruption), using a third-party takedown provider. Takedowns: 5,834 sites in Q1 2026 (https://www.nasc.gov.au/news/thousands-of-scam-websites-taken-down-as-online-scams-continue-to-cost-australians); in 2025, over 8,400 websites sent for assessment and over 7,500 scam URLs removed (https://www.nasc.gov.au/news/continued-action-critical-to-combat-fraud-as-annual-scam-losses-exceed-2-billion). It receives automated data from ReportCyber and regular data from AFCX, and is building a system that will 'receive a report of a scam from any institution or individual' (https://www.nasc.gov.au/what-we-do/collaboration). No published eligibility rules, API or onboarding process."
+  - id: asic-impersonation
+    name: ASIC - report a scam impersonating ASIC
+    scope: government
+    brand_id: asic
+    method: web_form
+    address_or_url: https://www.asic.gov.au/about-asic/contact-us#online
+    automated_ok: false
+    source: https://www.asic.gov.au/regulatory-resources/scams/scams-impersonating-asic
+    notes: "Only for ASIC impersonation: 'sending us an online inquiry with details and/or an attachment of the suspicious communication'. Phone 1300 300 630. ASIC's own takedown service (investment scam and phishing websites and ads, https://www.asic.gov.au/regulatory-resources/scams/asic-s-website-takedown-capability) has no public intake. Moneysmart (last updated 11 Sep 2026) says 'Report all scams, including investment scams, to Scamwatch' and reports 19,400 removals in FY2025/26 (https://moneysmart.gov.au/check-and-report-scams/report-an-investment-scam)."
+  - id: reportcyber
+    name: ReportCyber (ASD's ACSC with police) - report a cybercrime
+    scope: government
+    brand_id: null
+    method: web_form
+    address_or_url: https://reportapp.cyber.gov.au/
+    automated_ok: false
+    source: https://www.cyber.gov.au/submit-a-report
+    notes: "For victims (people and organisations) reporting a cybercrime to police ('our joint tool, ReportCyber', https://www.cyber.gov.au/guidance/help-during-a-cybercrime). Hotline 1300 CYBER1 (1300 292 371). The old URL https://www.cyber.gov.au/report-and-recover/report now redirects to /submit-a-report. The app refuses browsers it does not support. Not meant for third-party phishing-URL takedown. The NASC gets ReportCyber data automatically."
+  - id: acsc-incident
+    name: ASD's ACSC - Report a cyber security incident
+    scope: government
+    brand_id: null
+    method: web_form
+    address_or_url: https://www.cyber.gov.au/report-a-cyber-security-incident
+    automated_ok: false
+    source: https://www.cyber.gov.au/report-a-cyber-security-incident
+    notes: "Published 17 Jun 2026. 'Submit a cyber security incident report for large organisations, government or critical infrastructure', including mandatory reporting under SOCI and telecommunications security rules. Not for phishing aimed at other people."
+  - id: asd-ctis
+    name: ASD Cyber Threat Intelligence Sharing (CTIS)
+    scope: government
+    brand_id: null
+    method: api
+    address_or_url: https://partners.cyber.gov.au
+    automated_ok: true
+    source: https://www.cyber.gov.au/blog/join-the-cyber-threat-intelligence-sharing-service-through-sentinel-or-splunk-enterprise-security
+    notes: "NOT AVAILABLE TO CYBERCHECK UNLESS MEMBERSHIP IS APPROVED. CTIS is 'a two-way sharing platform that enables government and industry partners to receive and share information about malicious cyber activity at machine speed', with Microsoft Sentinel and Splunk ES plugins. The blog was last reviewed 24 Mar 2024. 'To join CTIS, you need to be an ASD Cyber Security Network Partner.' Network Partner eligibility (page published 22 Jun 2026, https://www.cyber.gov.au/become-a-partner/become-an-asd-network-partner): 'registered businesses with IT security capabilities, government and security agencies, and academic or not-for-profit institutions'. The application asks for an ABN and SOC/IR details. FY2025-26: over 550 CTIS partners and over 1 million IOCs shared (https://www.cyber.gov.au/publication/annual-cyber-threat-report-2025-26/year-in-review). partners.cyber.gov.au is the partner portal linked from cyber.gov.au. Indicator format, volume and rate limits are not published."
+  - id: acma-spam
+    name: ACMA spam forwarding (email; SMS to 0429 999 888)
+    scope: government
+    brand_id: null
+    method: email
+    address_or_url: report@submit.spam.acma.gov.au
+    automated_ok: false
+    source: https://www.acma.gov.au/dealing-with-spam
+    notes: "Only useful when an actual spam message was received; not for domains found in CT logs. Forward spam without editing it or the subject line; SMS to 0429 999 888 (standard charges). This 'is not a complaint'. ACMA collects the forwarding address or number. ACMA sends scams to Scamwatch (https://www.acma.gov.au/phone-and-sms-scams). The SMS Sender ID Register started on 1 July 2026 (https://ministers.treasury.gov.au/ministers/daniel-mulino-2025/media-releases/albanese-government-steps-industry-protections-stop)."
+  - id: afcx
+    name: Australian Financial Crimes Exchange (AFCX) - membership enquiry
+    scope: government
+    brand_id: null
+    method: web_form
+    address_or_url: https://www.afcx.com.au/contact-us/
+    automated_ok: false
+    source: https://www.afcx.com.au/
+    notes: "An industry body, not a government agency; listed here because it shares data with the NASC. 'The AFCX is open to organisations involved in financial transactions - such as banking, financing, insurance, superannuation, public utilities and telcommunication providers.' Members only; no route for researchers or the public. The homepage 'submit your interest' form was not rendering on 2026-11-15 (raw shortcode shown). The NASC joined the AFCX intel loop in June 2024 to share scam phone numbers, URLs and bank accounts (https://ministers.treasury.gov.au/ministers/stephen-jones-2022/media-releases/government-joins-cutting-edge-intel-tool-fight-scammers)."
+  # ---------------- REGISTRY (.au) ----------------
+  - id: au-registrar-abuse
+    name: Registrar of record abuse contact (.au)
+    scope: registry
+    brand_id: null
+    method: email
+    address_or_url: "Registrar Abuse Contact Email shown by a manual web lookup at https://whois.auda.org.au/ (CAPTCHA). Port 43 and RDAP responses carry no email addresses."
+    automated_ok: false
+    source: https://files.auda.org.au/documents/au-Licensing-Rules-July-2026.pdf
+    notes: "Licensing Rules (amended 23 June 2026): 3.4.1 says the complaint goes to the Registrar of Record, about Registrant or Registrar obligations under the auDA Rules, in the form the registrar requires. 3.4.4: the registrar has 30 calendar days unless it gives a new timeframe (3.4.5). 3.4.6: written decision with appeal right. Grounds: 2.11.16 (illegal or fraudulent use) and 2.11.17 (DNS Abuse, defined to include phishing). 2.16.3 lets auDA or a registrar suspend or cancel. WHOIS Schedule A discloses 'Registrar Abuse Contact Email/Phone', but WHOIS Policy 4.4 says email addresses were removed from Port 43 and RDAP responses (https://files.auda.org.au/documents/2025-11-WHOIS-Policy.pdf). Rule 2.18.14 and WHOIS Policy 5.1 prohibit automated query processes and bulk access. The WHOIS terms also forbid 'aggregating, collecting or compiling' WHOIS data. Registrar list: https://www.auda.org.au/registrar-resources/list-of-au-accredited-registrars/"
+  - id: auda-complaint
+    name: auDA complaint (after the registrar of record)
+    scope: registry
+    brand_id: null
+    method: web_form
+    address_or_url: https://www.auda.org.au/au-domain-names/complaints-and-disputes/au-complaints/submit-a-complaint/
+    automated_ok: false
+    source: https://www.auda.org.au/au-domain-names/complaints-and-disputes/au-complaints/submit-a-complaint/
+    notes: "Covers (1) licences where the registrant may not meet eligibility or allocation rules (for example a lookalike registered with a false or borrowed ABN) and (2) registrar conduct. 'All complaints must first be lodged with the registrar of record.' Valid contact details are required, and an upheld complaint never transfers the domain to you. The page sends scams to Scamwatch, website content to ACMA, hosting issues to the host and IP disputes to auDRP. Formally this is a review of the registrar's decision under Licensing Rules 3.5.1. auDA can also act at the request of an Enforcement Body or Intelligence Agency (Rule 2.11.19)."
+  - id: auda-dns-abuse-enquiry
+    name: auDA general enquiry - report suspected DNS abuse
+    scope: registry
+    brand_id: null
+    method: web_form
+    address_or_url: https://www.auda.org.au/about-auda/contact-us/general-enquiry-form/
+    automated_ok: false
+    source: https://www.auda.org.au/au-domain-names/manage-your-au-domain-name/keep-your-au-secure/
+    notes: "The keep-secure page says: 'To get in touch with us, including to report a suspected instance of DNS abuse, submit a general enquiry.' The form page itself says it 'should not be used to lodge domain or industry complaints', so describe the case as a DNS abuse report. auDA does daily checks against DNS abuse threat-intelligence feeds (25 daily feeds per the CEO blog of 10 Aug 2026, https://www.auda.org.au/news-insights/blog/from-the-ceo-uplifting-australian-and-global-scam-prevention/). auDA publishes general@auda.org.au as its general contact (WHOIS Policy cover page). No published researcher, trusted-notifier or zone-file access program."
+  # ---------------- BRANDS: banks ----------------
+  - id: commbank-hoax
+    name: CommBank hoax mailbox
+    scope: brand
+    brand_id: commbank
+    method: email
+    address_or_url: hoax@cba.com.au
+    automated_ok: false
+    source: https://www.commbank.com.au/support/security/how-to-report-a-scam.html
+    notes: "'If you get a suspicious email, send a copy or screenshot to hoax@cba.com.au'. Page last updated 10 Nov 2026. Phone 13 2221."
+  - id: bankwest-abuse
+    name: Bankwest scam mailbox
+    scope: brand
+    brand_id: bankwest
+    method: email
+    address_or_url: abuse@bankwest.com.au
+    automated_ok: false
+    source: https://www.bankwest.com.au/support/security/report-a-scam
+    notes: "The page shows the address through Cloudflare email protection, and the page's own mailto link reads abuse@bankwest.com.au. 'If you've received an unusual email or SMS, send us a screenshot or forward it.' Fraud line 13 17 19."
+  - id: westpac-hoax
+    name: Westpac hoax mailbox (SMS 0497 132 032)
+    scope: brand
+    brand_id: westpac
+    method: email
+    address_or_url: hoax@westpac.com.au
+    automated_ok: false
+    source: https://www.westpac.com.au/security/types-of-scams/phishing/
+    notes: "'Forward unusual emails to hoax@westpac.com.au or SMS/text messages to 0497 132 032 then delete the email or message.'"
+  - id: stgeorge-hoax
+    name: St.George hoax mailbox (SMS 0457 114 629)
+    scope: brand
+    brand_id: stgeorge
+    method: email
+    address_or_url: hoax@stgeorge.com.au
+    automated_ok: false
+    source: https://www.stgeorge.com.au/online-services/security-centre/how-to-report
+    notes: "Forward including any attachments, then delete. 'You'll receive an automatic response from us but we're unable to respond to you personally.'"
+  - id: banksa-hoax
+    name: BankSA hoax mailbox (SMS 0459 134 629)
+    scope: brand
+    brand_id: banksa
+    method: email
+    address_or_url: hoax@banksa.com.au
+    automated_ok: false
+    source: https://www.banksa.com.au/online-services/security-centre/how-to-report
+    notes: "Same process as St.George (automatic response only)."
+  - id: bankofmelbourne-hoax
+    name: Bank of Melbourne hoax mailbox (SMS 0447 214 629)
+    scope: brand
+    brand_id: bankofmelbourne
+    method: email
+    address_or_url: hoax@bankofmelbourne.com.au
+    automated_ok: false
+    source: https://www.bankofmelbourne.com.au/online-services/security-centre/how-to-report
+    notes: "Same process as St.George (automatic response only)."
+  - id: anz-hoax
+    name: ANZ hoax mailbox
+    scope: brand
+    brand_id: anz
+    method: email
+    address_or_url: hoax@cybersecurity.anz.com
+    automated_ok: false
+    source: https://www.anz.com.au/security/report-scams-fraud/
+    notes: "'Think you've received a fake email or SMS claiming to be from ANZ? ... report it to us at hoax@cybersecurity.anz.com.' Android SMS: share the message as an email to the same address."
+  - id: suncorpbank-security
+    name: Suncorp Bank security mailbox
+    scope: brand
+    brand_id: suncorpbank
+    method: email
+    address_or_url: security@suncorpbank.com.au
+    automated_ok: false
+    source: https://www.suncorpbank.com.au/security/identify-report-threats.html
+    notes: "'If you aren't sure a message appearing to be from Suncorp Bank is genuine, you can forward it directly to us at security@suncorpbank.com.au.' Re-check this address at each quarterly review."
+  - id: nab-phish
+    name: NAB phishing mailbox (SMS 0476 220 003)
+    scope: brand
+    brand_id: nab
+    method: email
+    address_or_url: phish@nab.com.au
+    automated_ok: false
+    source: https://www.nab.com.au/about-us/security/latest-fraud-scam-alerts
+    notes: "'Forward (then delete) suspicious emails to phish@nab.com.au and text messages to 0476 220 003 (047 NAB 0003).'"
+  - id: bendigo-phishing
+    name: Bendigo Bank phishing mailbox (SMS 0429 557 997)
+    scope: brand
+    brand_id: bendigo
+    method: email
+    address_or_url: phishing@bendigoadelaide.com.au
+    automated_ok: false
+    source: https://www.bendigobank.com.au/security/report-suspicious-activity/
+    notes: "Forward suspicious email. For SMS, forward to 0429 557 997 or email a screenshot. No personal response to SMS reports."
+  - id: ing-fraud
+    name: ING Australia fraud mailbox
+    scope: brand
+    brand_id: ing
+    method: email
+    address_or_url: fraud@ing.com.au
+    automated_ok: false
+    source: https://www.ing.com.au/security/latest-alerts.html
+    notes: "'Report suspicious messages to fraud@ing.com.au' (in alerts up to Sep 2026). ING's security page (https://www.ing.com.au/security.html) instead says 'Forward it to fraud.au@ing.com'. Both are on official pages; the alerts page is newer. Scams line 1800 052 743. Note: the alerts page also lists many scam addresses; never take addresses from that page except fraud@ing.com.au."
+  - id: macquarie-scams
+    name: Macquarie scams mailbox
+    scope: brand
+    brand_id: macquarie
+    method: email
+    address_or_url: scams@macquarie.com
+    automated_ok: false
+    source: https://www.macquarie.com.au/help/personal/fraud-disputes-and-security/fraud-and-security/reporting-fraud-scams-or-suspicious-activity.html
+    notes: "'If you haven't engaged with or made payments to a suspected scam, but wish to report it to us, please send the details to scams@macquarie.com.' This is the best fit for third-party reports among the bank pages."
+  - id: boq-fraud
+    name: BOQ fraud and scam operations mailbox
+    scope: brand
+    brand_id: boq
+    method: email
+    address_or_url: fraudandscamoperations@boq.com.au
+    automated_ok: false
+    source: https://www.boq.com.au/personal/help-and-support/fraud-and-scams/report
+    notes: "For BOQ-branded phishing text, email or call where no personal or bank details were given. Otherwise call 1300 55 72 72."
+  - id: hsbc-au-phishing
+    name: HSBC Australia phishing mailbox
+    scope: brand
+    brand_id: hsbc-au
+    method: email
+    address_or_url: phishing@hsbc.com
+    automated_ok: false
+    source: https://www.hsbc.com.au/help/security-centre/cyber-awareness/
+    notes: "Forward suspicious emails (and suspected smishing texts), then delete and empty deleted items. A global HSBC mailbox linked from the AU page."
+  # ---------------- BRANDS: payments ----------------
+  - id: paypal-au-phishing
+    name: PayPal phishing mailbox (AU help page)
+    scope: brand
+    brand_id: paypal-au
+    method: email
+    address_or_url: phishing@paypal.com
+    automated_ok: false
+    source: https://www.paypal.com/au/cshelp/article/how-do-i-spot-a-fake-fraudulent-or-phishing-paypal-email-or-website---help164
+    notes: "'To report a suspicious email or website, forward it to phishing@paypal.com' (Cloudflare-protected on the page, decoded from the page's own link). PayPal's AU security page reportedly gives phishing@paypal.com.au, but it returned HTTP 403 and was not verified."
+  # ---------------- BRANDS: government services ----------------
+  - id: ato-reportscams
+    name: ATO scam mailbox
+    scope: brand
+    brand_id: ato
+    method: email
+    address_or_url: ReportScams@ato.gov.au
+    automated_ok: false
+    source: https://www.ato.gov.au/online-services/scams-cyber-safety-and-identity-protection/verify-or-report-an-ato-scam
+    notes: "Email scams: forward the entire email. SMS and social media: screenshot. Page last updated 23 Mar 2026. Phone 1800 008 540 if TFN or other personal details were given."
+  - id: ato-report-form
+    name: ATO online Report a scam form
+    scope: brand
+    brand_id: ato
+    method: web_form
+    address_or_url: https://www.ato.gov.au/single-page-applications/reportascam#reportscam
+    automated_ok: false
+    source: https://www.ato.gov.au/online-services/scams-cyber-safety-and-identity-protection/verify-or-report-an-ato-scam
+    notes: "For SMS scams (alternative to email) and phone scams."
+  - id: servicesaustralia-reportascam
+    name: Services Australia scam mailbox (Centrelink, Medicare, Child Support, myGov)
+    scope: brand
+    brand_id: servicesaustralia
+    method: email
+    address_or_url: reportascam@servicesaustralia.gov.au
+    automated_ok: false
+    source: https://www.servicesaustralia.gov.au/report-services-australia-or-mygov-scam
+    notes: "Covers scams impersonating Services Australia, Centrelink, Medicare, Child Support and myGov, including fake websites. Email: forward the entire email unchanged. SMS: screenshot including the link. Page last updated 19 Aug 2025. Scams and Identity Theft Helpdesk 1800 941 126."
+  - id: mygov-reportascam
+    name: myGov scam reporting (same mailbox)
+    scope: brand
+    brand_id: mygov
+    method: email
+    address_or_url: reportascam@servicesaustralia.gov.au
+    automated_ok: false
+    source: https://my.gov.au/en/about/privacy-and-security/security/mygov-scams/how-to-spot-a-mygov-scam
+    notes: "'If you think you've got a scam, email it to reportascam@servicesaustralia.gov.au.' Same mailbox as servicesaustralia-reportascam; send one report, not two."
+  # ---------------- BRANDS: post / couriers ----------------
+  - id: auspost-scams
+    name: Australia Post scams mailbox
+    scope: brand
+    brand_id: auspost
+    method: email
+    address_or_url: scams@auspost.com.au
+    automated_ok: false
+    source: https://auspost.com.au/about-us/about-our-site/online-security-scams-fraud
+    notes: "'For suspicious emails, simply forward to the above address and avoid sending us screenshots.' For reporting only; no personal response."
+  - id: aramex-scams
+    name: Aramex Australia scams mailbox
+    scope: brand
+    brand_id: aramex
+    method: email
+    address_or_url: scams@aramex.com.au
+    automated_ok: false
+    source: https://www.aramex.com.au/tools/online-security/
+    notes: "Worded for victims: 'If you think you've fallen victim to a scam, contact us immediately at scams@aramex.com.au.' Not explicitly for third-party phishing reports."
+  # ---------------- BRANDS: tolls ----------------
+  - id: linkt-report-form
+    name: Linkt Report a scam form
+    scope: brand
+    brand_id: linkt
+    method: web_form
+    address_or_url: https://www.linkt.com.au/contact-us/report-scam
+    automated_ok: false
+    source: https://www.linkt.com.au/help/security/is-it-really-from-us
+    notes: "'Got a suspicious message claiming to be from Linkt? Report it online.' Required file attachment (jpeg or png, max 5 MB) and 'Verify you are human'. Asks for the sender's number or address and any email headers. No reporting email address is published."
+  # ---------------- BRANDS: telcos ----------------
+  - id: telstra-abuse
+    name: Telstra scam email mailbox
+    scope: brand
+    brand_id: telstra
+    method: email
+    address_or_url: abuse@telstra.com
+    automated_ok: false
+    source: https://www.telstra.com.au/support/internet-and-home-phone/protect-against-scams
+    notes: "'Forward the email to abuse@telstra.com... share the full email details including the date you received it.' Android SMS: forward to 7226 (SCAM); iPhone: Report Junk (https://www.telstra.com.au/cyber-security-and-safety/scams)."
+  - id: telstra-report-form
+    name: Telstra report a scam form
+    scope: brand
+    brand_id: telstra
+    method: web_form
+    address_or_url: https://www.telstra.com.au/forms/report-misuse-of-service
+    automated_ok: false
+    source: https://www.telstra.com.au/cyber-security-and-safety/scams
+    notes: "Linked as 'Report a scam' from Telstra's scams page."
+  - id: optus-abuse
+    name: Optus phishing mailbox
+    scope: brand
+    brand_id: optus
+    method: email
+    address_or_url: abuse@optusnet.com.au
+    automated_ok: false
+    source: https://www.optus.com.au/support/answer/reporting_hoaxes_phishing_or_scams_10073
+    notes: "'Forwarding the email and its headers to abuse@optusnet.com.au'; headers identify the sender. The page also refers people to Scamwatch."
+  - id: vodafone-scam-form
+    name: Vodafone Scam Lodgement Form
+    scope: brand
+    brand_id: vodafone
+    method: web_form
+    address_or_url: https://vha.my.salesforce-sites.com/ScamLodgementForm
+    automated_ok: false
+    source: https://www.vodafone.com.au/support/notify/scams
+    notes: "Linked from Vodafone's official scams page as the 'Scam Lodgement Form'; hosted on Salesforce. Phone 1300 650 410."
+  # ---------------- BRANDS: energy ----------------
+  - id: energyaustralia-staysafe
+    name: EnergyAustralia hoax mailbox
+    scope: brand
+    brand_id: energyaustralia
+    method: email
+    address_or_url: staysafe@energyaustralia.com.au
+    automated_ok: false
+    source: https://www.energyaustralia.com.au/home/help-support/faqs/online-security
+    notes: "'Send the hoax email or scam details to staysafe@energyaustralia.com.au. Please send the hoax email as an attachment if possible.' No direct response. The old URL /home/help-and-support/faqs/online-security redirects here."
+  - id: agl-report-form
+    name: AGL Report a scam form
+    scope: brand
+    brand_id: agl
+    method: web_form
+    address_or_url: https://www.agl.com.au/customer-security/scams-phishing-and-fraud/report-a-scam
+    automated_ok: false
+    source: https://www.agl.com.au/customer-security/scams-phishing-and-fraud/report-a-scam
+    notes: "Accepts 'Not a current or former customer'. Fields: name, account number (N/A allowed), email, optional phone, date contacted, contact method, description, optional scammer name, phone, email and website, optional email or screenshot upload. Phone 131 245."
+  - id: origin-hello
+    name: Origin Energy customer mailbox (scam reports)
+    scope: brand
+    brand_id: origin
+    method: email
+    address_or_url: hello@origin.com.au
+    automated_ok: false
+    source: https://www.originenergy.com.au/blog/is-it-really-origin-or-a-scam/
+    notes: "'Forward the suspicious email to hello@origin.com.au and report it to Scamwatch.' This is Origin's general customer mailbox, not a dedicated phishing inbox, and it sits on a blog page. The older help-support scam-alerts URL now redirects to the general help page."
+  # ---------------- BRANDS: retail ----------------
+  - id: woolworths-hoax
+    name: Woolworths hoax mailbox
+    scope: brand
+    brand_id: woolworths
+    method: email
+    address_or_url: hoax@woolworths.com.au
+    automated_ok: false
+    source: https://www.woolworths.com.au/shop/help/scam-alert
+    notes: "Forward suspicious communications 'for further investigation by our Cyber Security team'. NZ equivalent: hoax@woolworths.co.nz."
+  # ---------------- BRANDS: crypto ----------------
+  - id: swyftx-security
+    name: Swyftx security mailbox
+    scope: brand
+    brand_id: swyftx
+    method: email
+    address_or_url: security@swyftx.com
+    automated_ok: false
+    source: https://support.swyftx.com/en/articles/12015298-suspicious-websites-and-links-recognise-and-report
+    notes: "Cloudflare-protected on the page and decoded from the page itself. Fake sites: send a screenshot with the URL visible, the differences from the real site, and how you found it. 'We will then investigate and get the site taken down if possible and necessary.' Fits third-party website reports well."
+  - id: independentreserve-support
+    name: Independent Reserve support (impersonation)
+    scope: brand
+    brand_id: independentreserve
+    method: email
+    address_or_url: support@independentreserve.com
+    automated_ok: false
+    source: https://www.independentreserve.com/blog/knowledge-base/official-independent-reserve-channel-verification
+    notes: "General support mailbox, not a dedicated phishing inbox; the page is written for account-compromise victims."

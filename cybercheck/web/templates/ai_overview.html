@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "ops_macros.html" as ops %}
+{% block title %}CyberCheck · AI{% endblock %}
+{% block page_id %}ai{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('ops.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ asset('ops.js') }}" defer></script>{% endblock %}
+
+{#- A future time (cap resets): server text "in 5h", refreshed by app.js. -#}
+{% macro until(ts) -%}<time datetime="{{ ts | iso }}" title="{{ ts | utc }}">{{ fmt_until(ts) }}</time>{%- endmacro %}
+
+{% macro call_pill(st) -%}
+{%- set c = call_status(st) -%}
+{%- if st %}{{ ui.pill(c[0], c[1], c[2]) }}{% else %}<span class="muted">-</span>{% endif -%}
+{%- endmacro %}
+
+{% block body %}
+{% call ui.page_head("AI checks and spend", sub="Claude judges page screenshots and triages domain names. Every call counts against the daily and monthly caps, and nothing runs once a cap is reached.") %}
+  {{ ui.link_button("Open the review queue", "/review", kind="quiet") }}
+{% endcall %}
+
+<div class="ops-strip" role="group" aria-label="AI availability">
+  {%- if s.available %}{{ ui.health_pill('ok', 'AI available') }}
+  {%- elif not s.enabled or not s.has_key %}{{ ui.health_pill('off', 'AI not available') }}
+  {%- else %}{{ ui.health_pill('error', 'AI not available') }}{% endif %}
+  {% if not s.available %}<span class="ops-strip-text">{{ s.reason }}</span>{% endif %}
+  {% if not s.enabled %}{{ ui.pill('AI_ENABLED=false', 'muted', '○', title='Set AI_ENABLED=true in .env to turn AI checks on') }}{% endif %}
+  {% if not s.has_key %}{{ ui.pill('no API key', 'muted', '○', title='Set ANTHROPIC_API_KEY in .env') }}{% endif %}
+  <dl class="ops-facts">
+    <div><dt>Model</dt><dd>{{ s.model }}</dd></div>
+    <div><dt>Effort</dt><dd>{{ s.effort }}</dd></div>
+    <div><dt>Refusal fallback</dt><dd>{{ s.fallbacks }}</dd></div>
+  </dl>
+</div>
+
+<section class="spend" aria-labelledby="spend-h">
+  <h2 class="visually-hidden" id="spend-h">Spend against the caps</h2>
+  {% for m in spend %}
+  <div class="spend-item spend-item--{{ m.state }}"{% if m.key == 'day' %} data-ai-spend="day"{% endif %}>
+    {{ ops.ring(m.spent, m.cap, m.label ~ ": $" ~ ('%.2f' % m.spent) ~ " of $" ~ ('%.2f' % m.cap) ~ " (" ~ m.pct ~ "%)",
+                tone="violet" if m.state == 'ok' else None, size="" if m.key == 'triage' else "lg") }}
+    <div class="spend-body">
+      <p class="spend-label">{{ m.label }}</p>
+      <p class="spend-n"><span class="spend-spent" data-spend-value>${{ '%.2f' % m.spent }}</span> <span class="spend-of">of ${{ '%.2f' % m.cap }}</span></p>
+      {{ ui.meter(m.spent, m.cap, m.label ~ ", share of the cap", tone=m.tone) }}
+      <p class="spend-hint" data-spend-hint>
+        {%- if m.state == 'over' %}<span class="tone-red"><span aria-hidden="true">■</span> Cap reached.</span> These calls wait until it resets {{ until(m.resets) }}.
+        {%- elif m.state == 'warn' %}<span class="tone-amber"><span aria-hidden="true">▲</span> {{ m.pct }}% used</span>, ${{ '%.2f' % m.left }} left. Resets {{ until(m.resets) }}.
+        {%- else %}{{ m.pct }}% used, ${{ '%.2f' % m.left }} left. Resets {{ until(m.resets) }}.{% endif -%}
+      </p>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+{% call ops.tiles("Calls and checks") %}
+  {{ ops.tile("calls today", s.calls_today, "pulse", hint=s.calls_month ~ " this month") }}
+  {{ ops.tile("refusals today", s.refusals_today, "alert", total=s.calls_today if s.refusals_today else None, tone="amber" if s.refusals_today else None, hint=s.refusals_month ~ " this month") }}
+  {{ ops.tile("errors or invalid output today", s.errors_today, "danger", total=s.calls_today if s.errors_today else None, tone="red" if s.errors_today else None) }}
+  {{ ops.tile("pages waiting for a check", queue.pages_pending or 0, "clock", tone="amber" if queue.pages_pending else None) }}
+  {{ ops.tile("pages judged (24h)", queue.judged_24h or 0, "ai", tone="violet") }}
+  {{ ops.tile("domains triaged (24h)", queue.triaged_24h or 0, "ai", tone="violet") }}
+{% endcall %}
+
+{%- set h = hourly %}
+{% call ui.panel("Last 24 hours", id="activity", sub=("{:,}".format(h.total_calls) ~ " call" ~ ('' if h.total_calls == 1 else 's') ~ ", $" ~ ('%.2f' % h.total_cost)) if h.total_calls else "no calls", glow=True, class_="ops-activity") %}
+  {% if h.total_calls %}
+  <div class="ops-activity-grid">
+    <div class="ops-sparks">
+      <div class="ops-spark">
+        <p class="ops-spark-l">Calls per hour</p>
+        {{ ui.sparkline(h.calls, "AI calls per hour, last 24 hours", kind="bars", tone="violet", start="24 h ago", end="now") }}
+      </div>
+      <div class="ops-spark">
+        <p class="ops-spark-l">Spend per hour <span class="muted">busiest ${{ '%.4f' % (h.cost | max) }}</span></p>
+        {{ ui.sparkline(h.cost, "AI spend per hour in US dollars, last 24 hours, busiest hour $" ~ ('%.4f' % (h.cost | max)), kind="peaks", tone="violet", start="24 h ago", end="now", show_max=False) }}
+      </div>
+    </div>
+    <div class="ops-grid-wrap">
+      <p class="ops-spark-l">Calls by purpose, one dot an hour{% if h.problems %} <span class="muted">(marked: refused or failed)</span>{% endif %}</p>
+      {{ ui.dot_grid(h.rows, h.label, cols=["24 h ago", "18 h", "12 h", "6 h", "now"]) }}
+    </div>
+  </div>
+  {% else %}
+  {{ ui.empty("No AI calls in the last 24 hours.", "Calls show up here hour by hour once AI is on and the judge finds a new screenshot.") }}
+  {% endif %}
+{% endcall %}
+
+<div class="grid-2">
+  {% call ui.panel("Judge job", id="judge", sub="checks new screenshots and recomputes combined scores") %}
+    {% if job %}
+    {% call ui.kv() %}
+      {% call ui.kv_item("Last run") %}{{ ui.ago(job.last_run) }} {{ ui.health_pill('ok', 'ok') if job.ok else ui.health_pill('error', 'failed') }}{% if job.duration_s is defined %} <span class="muted">took {{ job.duration_s }}s</span>{% endif %}{% endcall %}
+      {% if job.error %}{% call ui.kv_item("Error") %}<span class="tone-red">{{ job.error }}</span>{% endcall %}{% endif %}
+      {% if job.result %}{% call ui.kv_item("Result") %}<code class="ops-json">{{ job.result | tojson }}</code>{% endcall %}{% endif %}
+      {% call ui.kv_item("Queue") %}{{ queue.pages_pending or 0 }} pages waiting{% endcall %}
+    {% endcall %}
+    {% else %}
+    {{ ui.empty("The judge job has not run yet.", "The worker starts it a few seconds after it starts, then runs it every few minutes.") }}
+    {% endif %}
+    <p class="hint">Only open review or high tier domains are judged, and only pages fetched in the last {{ judge_window_h }} hours (AI_JUDGE_MAX_AGE_H).</p>
+  {% endcall %}
+
+  {% call ui.panel("This month by purpose", id="by-purpose", flush=True) %}
+    {% call ui.table(["Purpose", ("Calls", "num"), ("Cost", "num"), ("Refusals", "num"), ("Errors", "num"), ("Cache hit", "num")], label="AI calls this month by purpose") %}
+      {% for r in by_purpose %}
+      <tr>
+        <td class="nowrap">{{ r.purpose }}</td>
+        <td class="num">{{ r.calls }}</td>
+        <td class="num">${{ '%.4f' % r.cost }}</td>
+        <td class="num">{% if r.refusals %}<span class="tone-amber">{{ r.refusals }}</span>{% else %}0{% endif %}</td>
+        <td class="num">{% if r.errors %}<span class="tone-red">{{ r.errors }}</span>{% else %}0{% endif %}</td>
+        <td class="num">{% if (r.cache_read + r.input) > 0 %}{{ '%.0f' % (100 * r.cache_read / (r.cache_read + r.input)) }}%{% else %}-{% endif %}</td>
+      </tr>
+      {% else %}{{ ui.empty_row(6, "No AI calls this month.") }}{% endfor %}
+    {% endcall %}
+  {% endcall %}
+</div>
+
+{% call ui.panel("Recent calls", id="calls", sub=(calls | length) ~ " newest" ~ (", " ~ problems ~ " refused or failed" if problems else ""), flush=True) %}
+  {% if calls %}
+  <div class="ops-tools js-only" hidden>
+    <div class="field field--inline">
+      <label for="calls-filter">Filter calls</label>
+      <input class="input" type="search" id="calls-filter" placeholder="purpose, domain, status or error" autocomplete="off" data-filter-for="calls-rows" data-search>
+    </div>
+    <label class="ops-check"><input type="checkbox" data-filter-problems="calls-rows"> Refused or failed only</label>
+    <span class="ops-count" data-filter-count="calls-rows" aria-live="polite"></span>
+  </div>
+  {% endif %}
+  {% call ui.table(["When", "Purpose", "Domain", "Model", ("In", "num"), ("Out", "num"), ("Cache r/w", "num"), ("Cost", "num"), "Status", "Verdict or error"], label="Recent AI calls", id="calls-rows", tall=True) %}
+    {% for c in calls %}
+    <tr{% if c.status in ('refusal', 'api_error', 'error', 'invalid', 'abandoned') %} data-problem{% endif %}>
+      <td class="muted" title="{{ c.at | utc('%Y-%m-%d %H:%M:%S UTC') }}">{{ ui.ago(c.at) }}</td>
+      <td class="nowrap">{{ c.purpose }}</td>
+      <td>{% if c.domain_id %}<a class="dom" href="/domain/{{ c.domain_id }}">{{ c.registered_domain or c.domain_id }}</a>{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td class="nowrap">{{ c.model }}{% if c.fallback_model %} <span class="muted" title="Refusal fallback model: {{ c.fallback_model }}">(fallback)</span>{% endif %}</td>
+      <td class="num">{{ c.input_tokens }}</td>
+      <td class="num">{{ c.output_tokens }}</td>
+      <td class="num muted">{{ c.cache_read_tokens }} / {{ c.cache_write_tokens }}</td>
+      <td class="num">${{ '%.4f' % c.cost_usd }}</td>
+      <td>{{ call_pill(c.status) }}</td>
+      <td>{% if c.error %}<span class="ops-err" title="{{ c.error | truncate(600) }}">{{ c.error | truncate(160) }}</span>{% elif c.verdict %}{{ ui.verdict_pill(c.verdict) }}{% elif c.refusal_category %}<span class="muted">refused: {{ c.refusal_category }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+    </tr>
+    {% else %}{{ ui.empty_row(10, "No AI calls yet. Calls appear here once AI is on and the judge finds a new screenshot.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+{% if calls | length >= limit and limit < 500 %}<p>{{ ui.link_button("Show " ~ ([limit * 2, 500] | min) ~ " calls", "/ai?limit=" ~ ([limit * 2, 500] | min), kind="quiet") }}</p>{% endif %}
+{% endblock %}

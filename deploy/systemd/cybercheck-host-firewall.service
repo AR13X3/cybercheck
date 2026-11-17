@@ -1,0 +1,10 @@
+# CyberCheck: host INPUT rules that stop anything on the fetcher's VPN bridge (ccvpn0) from opening
+# connections to the host. Installed by deploy/install-host-firewall.sh; runs as root from /usr/local/sbin.
+[Unit]
+Description=CyberCheck host firewall for the fetcher bridge
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cybercheck-host-firewall --apply

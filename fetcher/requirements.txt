@@ -1,0 +1,9 @@
+# CyberCheck sandboxed fetcher image (fetcher/Dockerfile). Pinned; installed on top of the
+# Playwright Python image, which does NOT bundle the playwright package itself.
+# Chromium is the one bundled with playwright 1.65.2 (Chromium 159.0.8154.6) - no browser download.
+playwright==1.65.2
+fastapi==0.163.1
+uvicorn==0.54.0
+httpx==0.28.1
+starlette==1.10.0
+pydantic==2.14.3

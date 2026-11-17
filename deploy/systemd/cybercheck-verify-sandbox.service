@@ -1,0 +1,12 @@
+# CyberCheck: weekly isolation re-test of the fetcher (user unit; the user must be in the docker group).
+# On failure the script deletes data/sandbox_verified.json, which turns /healthz/sandbox red in your uptime
+# monitor and switches automatic reporting off until a test passes again.
+# @CYBERCHECK_DIR@ is the checkout's absolute path: deploy/install-verify-sandbox.sh fills it in.
+[Unit]
+Description=CyberCheck fetcher isolation test
+
+[Service]
+Type=oneshot
+WorkingDirectory=@CYBERCHECK_DIR@
+ExecStart=@CYBERCHECK_DIR@/scripts/verify-sandbox.sh
+TimeoutStartSec=15min

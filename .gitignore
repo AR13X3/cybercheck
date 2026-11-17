@@ -1,0 +1,13 @@
+.env
+*.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+# private keys and certificates (WireGuard, TLS) never belong in the repo
+*.key
+*.pem
+*.crt

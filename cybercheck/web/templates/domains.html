@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% from "_row.html" import list_row %}
+{% block title %}CyberCheck · {{ title }}{% endblock %}
+{% block body_class %}page-domains{% endblock %}
+{% block page_id %}domains{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('triage.css') }}">{% endblock %}
+{% block body %}
+{%- set f = filters -%}
+{%- set any_filter = f.q or f.tier or f.status or f.brand -%}
+{%- set first = (page - 1) * page_size + 1 -%}
+{%- set sub -%}
+{%- if total == 0 -%}{{ 'No domain matches.' if any_filter else 'No domains stored yet.' }}
+{%- elif rows -%}{{ '{:,}'.format(total) }} {{ 'domain' if total == 1 else 'domains' }}{{ ' match' if any_filter }}. Showing {{ '{:,}'.format(first) }} to {{ '{:,}'.format(first + rows | length - 1) }}.
+{%- else -%}{{ '{:,}'.format(total) }} {{ 'domain' if total == 1 else 'domains' }}{{ ' match' if any_filter }}, none on page {{ page }}.
+{%- endif -%}
+{%- endset -%}
+{%- set brand_opts = [] -%}
+{%- for b in brands %}{% if b.brand_id %}{% set _ = brand_opts.append((b.brand_id, b.brand_id ~ " (" ~ b.n ~ ")")) %}{% endif %}{% endfor -%}
+{% call ui.page_head(title, sub=sub) %}
+  {{ ui.link_button("Open the review queue", "/review", kind="light") }}
+{% endcall %}
+
+{%- if by_status %}
+{%- set st_total = by_status.values() | sum %}
+<nav class="dom-tiles" aria-label="Domains by decision{{ ' (with the other filters)' if f.q or f.tier or f.brand }}">
+  {%- for key, kind, label, caption in [("open", "alert", "Open", "Not decided yet"), ("confirmed", "danger", "Confirmed phishing", "Reported and blocklisted"), ("false_positive", "done", "False positive", "Not about the brand"), ("benign", "protected", "Benign or parked", "Still watched")] %}
+  <div class="dom-tile{{ ' is-active' if f.status == key }}">{{ ui.tile(kind, label, by_status.get(key, 0) | compact, st_total | compact, caption, href=status_links[key]) }}</div>
+  {%- endfor %}
+</nav>
+{%- endif %}
+
+<form method="get" action="/domains" class="filterbar domains-filters" role="search" aria-label="Filter domains">
+  <span class="search-pill search-pill--page dom-search">
+    <label class="visually-hidden" for="df-q">Search</label>
+    <input class="search-input" type="search" id="df-q" name="q" value="{{ f.q or '' }}" placeholder="Search domain, hostname or how it displays" autocomplete="off" maxlength="300" data-search>
+    {{ ui.icon("search", "dom-search-ico") }}
+  </span>
+  {{ ui.filter_pill("Tier", "tier", [("high", "High"), ("review", "Review"), ("watch", "Watch")], selected=f.tier, id="df-tier", any_label="Any tier") }}
+  {{ ui.filter_pill("Decision", "status", [("open", "Open"), ("confirmed", "Confirmed phishing"), ("false_positive", "False positive"), ("benign", "Benign / parked")], selected=f.status, id="df-status", any_label="Any decision") }}
+  {{ ui.filter_pill("Brand", "brand", brand_opts, selected=f.brand, id="df-brand", any_label="Any brand") }}
+  {%- if sort != "seen" or dir != "desc" %}<input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ dir }}">{% endif %}
+  <span class="filterbar-actions">
+    {{ ui.button("Apply filters", kind="light", small=True) }}
+    {% if any_filter or sort != "seen" or dir != "desc" %}<a class="btn btn--quiet btn--sm" href="/domains">Clear</a>{% endif %}
+  </span>
+</form>
+
+{%- macro th(key, label, cls="") -%}
+{%- set s = sorts[key] -%}
+<th scope="col"{% if cls %} class="{{ cls }}"{% endif %}{% if s.aria %} aria-sort="{{ s.aria }}"{% endif %}><a class="sort{{ ' is-sorted' if s.aria }}" href="{{ s.href }}">{{ label }}<span class="sort-glyph" aria-hidden="true">{% if s.aria == 'descending' %}▼{% elif s.aria == 'ascending' %}▲{% else %}↕{% endif %}</span><span class="visually-hidden">{% if s.aria %}, sorted {{ s.aria }}. Select to sort {{ 'ascending' if s.next_dir == 'asc' else 'descending' }}{% else %}, select to sort{% endif %}</span></a></th>
+{%- endmacro -%}
+
+<div class="table-wrap table-wrap--tall" role="region" aria-label="Domains" tabindex="0">
+<table class="data domains">
+  <thead><tr>
+    {{ th("seen", "Seen") }}{{ th("tier", "Tier") }}{{ th("score", "Score", "num") }}{{ th("combined", "Combined", "num") }}{{ th("host", "Domain") }}{{ th("brand", "Brand") }}<th scope="col">Page and AI</th><th scope="col">Decision</th>
+  </tr></thead>
+  <tbody data-rows>
+  {%- for r in rows %}{{ list_row(r) }}{% else %}
+  {{ ui.empty_row(8, "Nothing here." ~ (" Try a shorter search or clear the filters." if any_filter else " Domains appear once the certificate stream finds a lookalike."), "/domains" if any_filter else "/", "Clear the filters" if any_filter else "Go to the overview") }}
+  {%- endfor %}
+  </tbody>
+</table>
+</div>
+
+{%- if prev_qs or next_qs %}
+<nav class="pager" aria-label="Pages">
+  {% if prev_qs %}<a class="btn" href="?{{ prev_qs }}" rel="prev" data-shortcut="[" data-shortcut-label="Previous page">Previous page</a>{% endif %}
+  <span class="pager-pos muted">Page {{ page }} of {{ '{:,}'.format(pages) }}</span>
+  {% if next_qs %}<a class="btn" href="?{{ next_qs }}" rel="next" data-shortcut="]" data-shortcut-label="Next page">Next page</a>{% endif %}
+</nav>
+{%- endif %}
+{% endblock %}

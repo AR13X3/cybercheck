@@ -1,0 +1,268 @@
+/* Overview ("/") only: the hero (title and sparklines | threat terrain | window and gauges), the pipeline grid,
+   the verdict tiles, the live feed and the brand bars. Tokens and components come from app.css (docs/UI.md).
+   No external assets and no CSS image references (the SVG fallback paints its dot pattern with an attribute). */
+
+/* ---- hero layout ------------------------------------------------------------------------------------- */
+.ov-hero {
+  display: grid; column-gap: 30px; row-gap: 18px; margin: 6px 0 28px;
+  grid-template-columns: minmax(230px, 268px) minmax(0, 1fr) minmax(176px, 204px);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "head stage right" "left stage right";
+}
+.ov-head { grid-area: head; min-width: 0; padding-top: 6px; }
+.ov-head h1 { margin: 0; font-size: 44px; font-weight: 300; line-height: 1.06; letter-spacing: -.02em; max-width: 8ch; }
+.ov-sub { margin: 10px 0 0; color: var(--muted); font-size: var(--fs-12); font-weight: 300; }
+.ov-left { grid-area: left; min-width: 0; display: flex; flex-direction: column; gap: 26px; padding-top: 10px; }
+.ov-stage-wrap { grid-area: stage; min-width: 0; }
+.ov-right { grid-area: right; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 26px; }
+.ov-right .segmented { flex: none; }
+
+/* big light numbers in the left column */
+.ov-stats { display: flex; flex-wrap: wrap; gap: 16px 28px; }
+.ov-stats .stat-n { font-size: var(--fs-28); }
+.ov-stat-link:hover .stat-l, .ov-stat-link:hover .stat-val { color: var(--teal-hi); }
+.ov-stats--plain { margin: 6px 0 24px; gap: 18px 40px; }
+
+/* sparkline and peak chart blocks */
+.ov-chart { position: relative; min-width: 0; }
+.ov-chart-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 22px; }
+.ov-chart-h { margin: 0; font-size: var(--fs-13); font-weight: 400; color: var(--text); }
+.ov-chart-sub { color: var(--muted); font-size: var(--fs-11); }
+.ov-chart .spark-svg { height: 52px; }
+.ov-chart .spark--peaks .spark-svg { height: 40px; }
+.ov-chart .spark-max { top: -16px; }
+
+/* what waits for the reviewer: two quiet chips */
+.ov-attn { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.ov-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 14px 0 10px; max-width: 100%;
+  border-radius: var(--radius-pill); background: var(--glass); border: 1px solid var(--stroke);
+  color: var(--text); text-decoration: none; font-size: var(--fs-12);
+}
+.ov-chip:hover { background: var(--glass-2); border-color: var(--stroke-2); color: var(--text); }
+.ov-chip .ico { width: 16px; height: 16px; }
+.ov-chip .kpi-val { font-size: var(--fs-14); font-weight: 500; }
+.ov-chip-l { color: var(--muted); }
+.ov-chip--amber .ico { color: var(--amber); }
+.ov-chip--red .ico { color: var(--red); }
+.ov-chip--red { border-color: var(--red-line); }
+.ov-chip--muted .ico { color: var(--green); }
+
+/* gauges: a column on wide screens, a row on narrower ones */
+.ov-gauges { display: flex; flex-direction: column; align-items: center; gap: 26px; width: 100%; }
+.ov-gauge { min-width: 0; display: flex; justify-content: center; width: 100%; }
+.ov-gauges .gauge-ring { width: 84px; height: 84px; }
+.ov-gauges .gauge-n { font-size: var(--fs-28); }
+.ov-gauges .gauge-sub { max-width: 18ch; }
+.ov-gauges a.gauge { border-radius: 18px; padding: 4px 8px; }
+.ov-gauges a.gauge:hover .gauge-val { color: var(--teal-hi); }
+
+/* ---- the terrain stage ------------------------------------------------------------------------------- */
+.ov-stage { height: clamp(480px, 64vh, 620px); border-radius: 26px; }
+.ov-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+.ov-stage.is-live .ov-fallback { display: none; }
+.ov-fallback { position: absolute; left: 0; top: 10px; width: 100%; height: calc(100% - 84px); overflow: visible; }
+.tf-base { fill: rgba(255, 255, 255, .075); }
+.tf-band { stroke: var(--faint); opacity: .7; }
+.tf-band-l { fill: var(--muted); font: 400 9px var(--font); }
+.tf-now { stroke: var(--teal); opacity: .5; }
+.tf-w1, .tf-w2, .tf-w3, .tf-w4 { fill: var(--teal); }
+.tf-r1, .tf-r2, .tf-r3, .tf-r4 { fill: var(--amber); }
+.tf-h1, .tf-h2, .tf-h3, .tf-h4 { fill: var(--red); }
+.tf-w1, .tf-r1, .tf-h1 { opacity: .35; }
+.tf-w2, .tf-r2, .tf-h2 { opacity: .55; }
+.tf-w3, .tf-r3, .tf-h3 { opacity: .78; }
+/* the faintest level stays neutral, like the canvas: band colour shows only where hits gather */
+.tf-w1, .tf-r1, .tf-h1 { fill: var(--grey); opacity: .2; }
+.tf-w2, .tf-r2, .tf-h2 { opacity: .45; }
+.tf-mark { color: var(--grey); }
+.tf-mark--red { color: var(--red); } .tf-mark--amber { color: var(--amber); } .tf-mark--green { color: var(--green); }
+.tf-mark-bg { fill: var(--surface-2); stroke: rgba(255, 255, 255, .22); stroke-width: 1; }
+.tf-mark:hover .tf-mark-bg, .tf-mark:focus .tf-mark-bg { stroke: var(--text); }
+.tf-mark:focus { outline: none; }
+.tf-mark:focus-visible .tf-mark-bg { stroke: var(--focus); stroke-width: 2; }
+.tf-mark use { fill: currentColor; }
+
+/* time ends of the terrain */
+.ov-axis { position: absolute; bottom: 26px; color: var(--muted); font-size: var(--fs-11); pointer-events: none; }
+.ov-axis--start { left: 12px; }
+.ov-axis--end { right: 12px; }
+.ov-axis--end::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px rgba(47, 211, 167, .8); vertical-align: 1px; }
+
+/* pinned domains (CC.badge with .pin; overview.js sets left/top through the CSSOM) */
+.ov-pin { z-index: 2; }
+.ov-pin:hover, .ov-pin:focus-visible { z-index: 3; }
+.ov-pin.is-new { animation: ov-pin-in .5s ease-out both; }
+@keyframes ov-pin-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } }
+.ov-stage.hide-marks .hero-layer { display: none; }
+.ov-stage .fab-row .icon-btn-text { min-width: 2.6em; text-align: left; }
+.ov-stage .fab-row { bottom: 12px; }
+
+/* ---- pipeline grid and verdict tiles ----------------------------------------------------------------- */
+.ov-bottom { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); align-items: stretch; }
+.ov-bottom > .panel { margin-bottom: 0; display: flex; flex-direction: column; }
+.ov-bottom > .panel > .panel-body { flex: 1 1 auto; display: flex; flex-direction: column; }
+.ov-pipe .dg { gap: 4px; }
+.ov-pipe .dg-label { color: var(--muted); }
+.ov-pipe .dg-cells { height: 24px; }
+.ov-pipe .dg-total { min-width: 3.4em; }
+.ov-pipe-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: auto; padding-top: 16px; }
+.ov-latest { margin: 0; min-width: 0; max-width: 100%; }
+.ov-latest-link { display: inline-flex; max-width: 100%; text-decoration: none; color: var(--text); border-radius: var(--radius-pill); }
+.ov-latest-link .tip-pill { max-width: 100%; }
+.ov-latest-link:hover .tip-pill { background: var(--glass-3); }
+.ov-table { margin: 0; }
+.ov-table[open] { flex-basis: 100%; }
+.ov-table > summary { color: var(--teal); font-size: var(--fs-12); min-height: 32px; display: inline-flex; align-items: center; }
+.ov-table .table-wrap { margin: 8px 0 0; max-height: 380px; overflow-y: auto; }
+.ov-tiles { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); flex: 1 1 auto; }
+.ov-tiles .tile { min-height: 150px; }
+.ov-mix { margin-top: 18px; }
+.ov-mix-bar { display: block; width: 100%; height: 6px; }
+.ov-mix-track { fill: rgba(255, 255, 255, .06); }
+.ov-mix-red { fill: var(--red); } .ov-mix-amber { fill: var(--amber); } .ov-mix-green { fill: var(--green); } .ov-mix-grey { fill: var(--grey); opacity: .55; }
+.ov-mix-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 10px 0 0; color: var(--muted); font-size: var(--fs-12); max-width: none; }
+.ov-mix-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ov-mix-sw--red { background: var(--red); } .ov-mix-sw--amber { background: var(--amber); } .ov-mix-sw--green { background: var(--green); } .ov-mix-sw--grey { background: var(--grey); }
+.ov-note { margin: 12px 0 0; color: var(--muted); font-size: var(--fs-12); }
+
+/* ---- live feed and brands ---------------------------------------------------------------------------- */
+.ov-lower { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); align-items: start; margin-top: var(--gap); }
+.ov-lower > .panel { margin-bottom: 0; }
+.ov-lower--plain { grid-template-columns: minmax(0, 1fr); }
+.feed-panel { display: flex; flex-direction: column; min-width: 0; }
+.feed-panel .panel-title { display: inline-flex; align-items: center; gap: 8px; }
+.feed-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 20px 0; }
+#feed-pause[aria-pressed="true"] { border-color: var(--amber-line); color: var(--amber); background: var(--amber-bg); }
+.feed-state { margin: 0; padding: 10px 20px; color: var(--muted); font-size: var(--fs-12); max-width: none; }
+.feed-state.is-live { color: var(--teal); }
+.feed-state.is-paused { color: var(--amber); }
+.feed-state.is-paused::before { content: "▲ "; }
+.feed-state.is-error { color: var(--red); }
+.feed-state.is-error::before { content: "■ "; }
+
+.feed { list-style: none; margin: 0; padding: 0 8px 10px; max-height: 620px; overflow-y: auto; font-size: var(--fs-13); scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .16) transparent; }
+/* the list scrolls inside the panel: fade its last line out rather than cutting a row in half */
+.feed-panel .feed { padding-bottom: 30px; -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 36px), transparent); }
+.fl {
+  display: grid; grid-template-columns: 4.8em 5.6em 2.2em minmax(0, 1fr); column-gap: 10px; row-gap: 3px;
+  align-items: baseline; padding: 8px 12px; border-radius: 14px; position: relative;
+}
+.fl + .fl { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04); }
+.fl:hover, .fl:focus-within { background: var(--glass-2); box-shadow: none; }
+.fl:hover + .fl, .fl:focus-within + .fl { box-shadow: none; }
+.fl.is-cursor { background: var(--glass-3); box-shadow: inset 2px 0 0 var(--focus); }
+.fl--high::before { content: ""; position: absolute; left: 2px; top: 12px; width: 4px; height: 4px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); }
+.fl.is-new { animation: row-in 1.8s ease-out; }
+.fl.is-filtered { display: none; }
+.fl-time { color: var(--muted); font-size: var(--fs-12); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fl-tier .pill { min-height: 20px; line-height: 18px; padding: 0 8px; }
+.fl-score { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 300; font-size: var(--fs-15); }
+.fl-host { min-width: 0; }
+.fl-host .dom, .fl-host .dom-alt { word-break: normal; overflow-wrap: anywhere; }
+.fl-host .dom { font-size: var(--fs-14); }
+.fl-meta { grid-column: 4; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; color: var(--muted); font-size: var(--fs-12); }
+.fl-meta:empty { display: none; }
+.fl-empty { padding: 8px 12px; }
+.fl-empty .empty { border: 0; background: transparent; padding: 16px 0; }
+
+.bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; }
+.bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-decoration: none; font-size: var(--fs-13); min-height: 24px; display: flex; align-items: center; }
+.bar-name:hover { color: var(--teal-hi); }
+.bar-total { font-weight: 300; font-size: var(--fs-18); color: var(--text); text-decoration: none; font-variant-numeric: tabular-nums; }
+.bar-total:hover { color: var(--teal-hi); }
+svg.bar { grid-column: 1 / -1; display: block; width: 100%; height: 4px; border-radius: 2px; }
+.bar-track { fill: rgba(255, 255, 255, .07); }
+.bar-high { fill: var(--red); }
+.bar-review { fill: var(--amber); }
+.bar-watch { fill: var(--teal); opacity: .55; }
+.bar-tiers { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: var(--fs-12); }
+.bar-tier { text-decoration: none; }
+.bar-tier span { margin-right: 4px; font-size: 10px; }
+.bars-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 14px 0 0; color: var(--muted); font-size: var(--fs-12); max-width: none; }
+.bars-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.sw-high { background: var(--red); } .sw-review { background: var(--amber); } .sw-watch { background: var(--teal); opacity: .55; }
+
+/* ---- narrower screens -------------------------------------------------------------------------------- */
+@media (max-width: 1279.98px) {
+  .ov-hero {
+    grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto;
+    grid-template-areas: "head right" "stage stage" "left left";
+  }
+  .ov-head h1 { max-width: none; }
+  .ov-right { justify-content: flex-start; }
+  .ov-gauges { flex-direction: row; justify-content: flex-end; align-items: flex-start; gap: 18px; }
+  .ov-gauge { width: auto; }
+  .ov-left { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 30px; padding-top: 4px; }
+  .ov-left .ov-attn { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
+  .ov-stage { height: clamp(420px, 56vh, 540px); }
+}
+/* side by side, the feed takes the height of the brand panel and scrolls inside it (size containment keeps the
+   long list from setting the row height) */
+@media (min-width: 1100px) {
+  .ov-lower { align-items: stretch; }
+  .ov-lower > .feed-panel { contain: size; min-height: 560px; }
+  .ov-lower > .feed-panel .feed { flex: 1 1 0; min-height: 0; max-height: none; }
+  .ov-lower--plain > .feed-panel { contain: none; }
+  .ov-lower--plain > .feed-panel .feed { max-height: 620px; }
+}
+@media (max-width: 1099.98px) {
+  .ov-bottom, .ov-lower { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 899.98px) {
+  .ov-hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "stage" "right" "left"; column-gap: 0; }
+  .ov-head h1 { font-size: var(--fs-36); }
+  .ov-right { align-items: stretch; gap: 18px; }
+  .ov-right .segmented { align-self: flex-start; }
+  .ov-gauges { justify-content: space-between; gap: 8px; }
+  .ov-gauge { flex: 1 1 0; }
+  .ov-left { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-left .ov-stats { grid-column: 1 / -1; }
+  /* the button row sits under the terrain, so it never covers the time labels */
+  .ov-stage { height: 340px; margin-bottom: 64px; }
+  .hero .ov-stage .fab-row { bottom: -60px; }
+}
+@media (max-width: 599.98px) {
+  .ov-head h1 { font-size: var(--fs-28); }
+  .ov-stage { height: 300px; }
+  .ov-gauges .gauge-ring { width: 64px; height: 64px; }
+  .ov-gauges .gauge-n { font-size: var(--fs-22); }
+  .ov-gauges .gauge-l, .ov-gauges .gauge-sub { font-size: var(--fs-11); }
+  .ov-gauges a.gauge { padding: 4px 2px; }
+  .ov-left { grid-template-columns: minmax(0, 1fr); }
+  .ov-stats .stat-n { font-size: var(--fs-22); }
+  .ov-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* the two dot-layer toggles stay on wider screens, so the row fits at 360 px with 40 px targets */
+  .ov-stage .fab-row [data-layer="hits"], .ov-stage .fab-row [data-layer="certs"] { display: none; }
+  .ov-stage .fab-row { gap: 2px; }
+  .ov-stage .fab-row .fab-sep { display: none; }
+  .ov-stage .fab-row .icon-btn--text { padding: 0 12px 0 9px; }
+  .ov-stage .fab-row .icon-btn-text { min-width: 0; }
+  .ov-tiles .tile { min-height: 120px; }
+  .ov-tiles .tile-n { font-size: var(--fs-22); }
+  .fl { grid-template-columns: auto auto minmax(0, 1fr); padding: 10px 10px; }
+  .fl-score { text-align: left; }
+  .fl-host, .fl-meta { grid-column: 1 / -1; }
+  .feed-bar, .feed-state { padding-left: 16px; padding-right: 16px; }
+  .ov-pipe .dg-total { min-width: 2.6em; }
+}
+
+/* ---- touch ------------------------------------------------------------------------------------------- */
+@media (max-width: 899.98px), (pointer: coarse) {
+  .bar-name, .bar-total { min-height: 36px; display: inline-flex; align-items: center; }
+  .bar-tier { min-height: 30px; display: inline-flex; align-items: center; }
+  .bar-tiers { gap: 2px 18px; }
+  .bars { gap: 8px; }
+  .bar-row { row-gap: 2px; }
+  .ov-table > summary { min-height: 44px; }
+  .fl-host .dom { display: inline-flex; align-items: center; min-height: 40px; }
+  .ov-table td a { display: inline-flex; align-items: center; justify-content: flex-end; min-height: 40px; min-width: 40px; }
+  .ov-chip { min-height: 40px; }
+  .ov-stat-link { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fl.is-new, .ov-pin.is-new { animation: none; }
+}

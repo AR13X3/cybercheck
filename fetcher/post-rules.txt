@@ -1,0 +1,41 @@
+# gluetun post-rules (/iptables/post-rules.txt, mounted read-only). Closes the two gaps the v3.41.3
+# kill switch leaves open:
+#   1. The container's own Docker subnet (eth0) is ACCEPTed by gluetun, and that subnet's gateway IS
+#      the host. NEW connections from this namespace to the whole ccvpn subnet are rejected, so the
+#      fetcher cannot reach the host (SSH, Postgres, anything) through the bridge.
+#   2. RFC1918 / CGNAT (tailnet) / link-local (cloud metadata) / multicast and other non-public
+#      destinations otherwise follow the default route INTO the tunnel and reach the VPN provider's
+#      network. They are rejected too.
+#
+# Every rule matches ANY output interface (no -o), so it holds whatever gluetun names the tunnel
+# (wg0 / tun0) and also on eth0. Every rule matches only conntrack state NEW: replies on connections
+# that were opened TO this namespace (the host -> published fetcher API on 8432) are ESTABLISHED and
+# still pass. Inserted with -I, so they sit ABOVE gluetun's own ACCEPT rules (`-A OUTPUT -o wg0 -j
+# ACCEPT`, the local-subnet ACCEPT). Loopback (127/8 on lo) is not touched: the fetcher talks to the
+# gluetun control server there.
+#
+# Only lines beginning with iptables / ip6tables (and the -nft/-legacy variants) run; everything else
+# is ignored. A failing line makes gluetun roll back, OPEN the firewall and exit, so the fetcher
+# (depends_on service_healthy) never starts; scripts/verify-sandbox.sh checks the rules are loaded.
+#
+# The ccvpn subnet below MUST match networks.ccvpn.ipam in fetcher/compose.yaml (172.29.254.0/28); it is
+# inside 172.16.0.0/12 as well, the explicit line just makes the intent obvious in `iptables -S`.
+
+iptables -I OUTPUT -d 172.29.254.0/28 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 10.0.0.0/8 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 172.16.0.0/12 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 192.168.0.0/16 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 100.64.0.0/10 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 169.254.0.0/16 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 0.0.0.0/8 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 192.0.0.0/24 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 198.18.0.0/15 -m conntrack --ctstate NEW -j REJECT
+iptables -I OUTPUT -d 224.0.0.0/3 -m conntrack --ctstate NEW -j REJECT
+
+# IPv6 is disabled in this namespace (sysctls net.ipv6.conf.{all,default}.disable_ipv6=1 and an
+# IPv4-only bridge), so there is no IPv6 egress to block, and gluetun's IPv6 policy is DROP anyway when
+# ip6tables works. These are left commented ON PURPOSE: if ip6tables is unavailable, an ip6tables
+# post-rule FAILS, which makes gluetun open the firewall and exit. Enable them only after confirming
+# `docker compose exec vpn ip6tables -S` works. (fd7a:115c:a1e0::/48, the tailnet, is inside fc00::/7.)
+# ip6tables -I OUTPUT -d fc00::/7 -m conntrack --ctstate NEW -j REJECT
+# ip6tables -I OUTPUT -d fe80::/10 -m conntrack --ctstate NEW -j REJECT

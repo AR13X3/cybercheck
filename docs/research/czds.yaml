@@ -1,0 +1,176 @@
+# CZDS research for CyberCheck. Fact-checked 2026-11-15. Sources are inline; narrative in czds.md.
+auth_url: "https://account-api.icann.org/api/authenticate"   # POST; spec v1.0.9 (2022-05-24), still the latest published spec
+auth_body_example: |
+  POST /api/authenticate HTTP/1.1
+  Host: account-api.icann.org
+  Content-Type: application/json
+  Accept: application/json
+  User-Agent: CyberCheck-czds/0.1
+  {"username": "<czds-login-email>", "password": "<from .env>"}
+  # 200 -> {"accessToken": "<JWT>"}; 400 malformed; 401 bad creds (empty body); 415 bad content-type; 429 rate-limited; 500 server error
+  # Spec says IPv4 only; the host now also has AAAA records, so force IPv4 (e.g. curl -4).
+  # Source: https://github.com/icann/czds-api-client-java/blob/master/docs/ICANN_CZDS_api.pdf
+links_url: "https://czds-api.icann.org/czds/downloads/links"   # GET with 'Authorization: Bearer <token>' and a User-Agent; returns a JSON array like ["https://czds-download-api.icann.org/czds/downloads/top.zone", ...]
+download_notes: |
+  - GET each URL from links_url exactly as returned (spec v1.0.9), e.g. https://czds-download-api.icann.org/czds/downloads/<tld>.zone,
+    with 'Authorization: Bearer <token>' and a real 'User-Agent' (without one you may be redirected to a maintenance page).
+    The body is a gzip file. The spec documents Content-type 'text/dns' for GET; the HEAD example shows 'application/x-gzip' and
+    'Content-Disposition: attachment;filename=<tld>.txt.gz'. Do not rely on Content-Type: check the gzip magic bytes and the length.
+  - HEAD on the same URL returns Content-Length, Content-Disposition and Last-Modified without downloading (spec s5.3).
+    Skip the GET if Last-Modified and Content-Length are unchanged. Whether HEAD counts toward the 24h limit is not documented;
+    use at most 1 HEAD + 1 GET per zone per day.
+  - Status codes: 401 token missing or expired (log in again); 403 no permission or zone doesn't exist; 409 accept the new T&C in the portal;
+    400 malformed. 404 isn't in the spec (ICANN's Python client handles it separately).
+  - HTTPS only; spec says IPv4 only (the hostnames now publish AAAA records; IPv6 untested). Use the IPv4 address declared in the CZDS profile.
+  - Some TLDs are flagged SFTP-only in the portal (IP allowlist, with host, username and password shown in the request details); they
+    can't be fetched over HTTP. Which TLDs these are is not known yet; check the request details after approval.
+  - Schedule: ICANN collects from 00:00 UTC and everything is available after 06:00 UTC (https://czds.icann.org/help). Run once at about 06:30 UTC.
+  - Validate every file: byte count == Content-Length; gzip -t; first and last records are identical SOA records (the SOA must be at top and bottom, per Spec 4 s2.1.4);
+    SOA serial newer than yesterday's; domain count within about 20% of yesterday's; reject tiny files. Known faults: truncated .com/.org and the same .com file
+    served on consecutive days (Aug 2024); 20-byte empty top.txt.gz (Jul 2025); 39-byte '; Transfer failed.' gov.txt.gz (Jul 2026, still served once
+    after ICANN's fix). On failure keep yesterday's list and retry later, within the 24h rule.
+  - Each day, diff the links list against yesterday's and alert when a TLD disappears (in Jan 2026 a CZDS fault revoked everyone's .top access).
+  - Format (base RA 2024 Spec 4 s2.1.4): one record per line '<name>\t<ttl>\t<class>\t<type>\t<rdata>', exactly one tab between fields, lowercase, FQDN,
+    no directives, comments or blank lines; sorted 'alphabetically' except the SOA (collation not defined, so re-sort before comm).
+    Signed zones also contain DS/RRSIG/NSEC3 lines; keep only type 'ns'.
+    Verisign files leave out serverHold/clientHold/pendingDelete/redemptionPeriod names and names with no NS (https://www.verisign.com/resources/zone-file/).
+  - Low-RAM diff (bounded memory, mostly disk I/O; zstd, zcat, comm and sort are standard on Ubuntu/Debian):
+      zcat T.txt.gz | awk -F'\t' 'tolower($4)=="ns"{print tolower($1)}' | LC_ALL=C uniq \
+        | awk -F. 'NF==3' \
+        | LC_ALL=C sort -u -S 256M -T /path/tmp --compress-program=zstd | zstd -q > T.YYYYMMDD.zst
+      LC_ALL=C comm -13 <(zstdcat T.prev.zst) <(zstdcat T.today.zst) > T.added    # candidates to score
+      LC_ALL=C comm -23 <(zstdcat T.prev.zst) <(zstdcat T.today.zst) > T.removed  # takedown/hold signal
+    (NF==3 keeps second-level names like 'example.top.'. tolower() is defensive; the spec already requires lowercase.)
+    Store only deltas and scores in CyberCheck's Postgres database. Keep 2 to 3 days of sorted .zst lists (T&C s1.4: copy only as necessary).
+    Delete the raw .gz after a successful parse. Match brand terms with Aho-Corasick after IDN and homoglyph normalisation.
+    Look up RDAP only for shortlisted names, rate-limited (T&C s1.1(2)).
+token_lifetime: "24 hours from creation (exact expiry in the JWT exp claim); every successful login issues a new token (spec v1.0.9 s3.1-3.2)"
+rate_limits:
+  authentication: "8 attempts per 5 minutes per source IP; then HTTP 429 for the rest of the 5-minute cycle (spec v1.0.9 s3.1)"
+  downloads: "Each zone at most once per 24-hour period, by SFTP or HTTP (current CZDS T&C v1.00 s1.8; base RA Spec 4 s2.1.3; CZDS Help)"
+  other: "No published numeric limit on concurrency or bandwidth. ICANN attributed the Aug 2024 failures to 'extremely high traffic to CZDS API'. Download zones one at a time, with backoff."
+  sources:
+    - "https://github.com/icann/czds-api-client-java/blob/master/docs/ICANN_CZDS_api.pdf"
+    - "https://czds-api.icann.org/czds/terms/condition"
+    - "https://czds.icann.org/help"
+    - "https://itp.cdn.icann.org/en/files/registry-agreements/base-registry-agreement-21-01-2024-en.html"
+    - "https://lists.icann.org/hyperkitty/list/gtld-tech@icann.org/thread/2YG52UHHNAQCULTWK4UPV5MFWB4KHACY/"
+tos_summary:
+  binding_documents:
+    - "CZDS Terms & Conditions v1.00 (registry to user), accepted for each TLD request; public at https://czds-api.icann.org/czds/terms/condition. A registry may show different terms; read each one."
+    - "CZDS Terms of Use v1.00 (ICANN to user); public at https://czds-api.icann.org/czds/terms/use"
+    - "Base Registry Agreement Spec 4 s2.1 (https://itp.cdn.icann.org/en/files/registry-agreements/base-registry-agreement-21-01-2024-en.html)"
+  allowed: "'any legal purpose not otherwise prohibited by the Terms' (T&C s1); the CZDS help page lists combating phishing as a use of zone data"
+  prohibited:
+    - "Marketing of any kind, including mass unsolicited messages (T&C s1.1(1), s1.3)"
+    - "Using the data to enable high-volume automated processes that send queries or data to registry or ICANN-accredited registrar systems (T&C s1.1(2)). This bears on bulk RDAP/WHOIS lookups and mass automated reports."
+    - "Harassing registrants or disrupting their business (T&C s1.2)"
+    - "Copying beyond what your permitted use needs (T&C s1.4)"
+    - "Distributing the data or any copy without the registry's written consent (T&C s1.6)"
+    - "Re-distributing or sublicensing access to CZDS, i.e. no shared accounts (Terms of Use s2.3(b))"
+  redistribution_exception: "Allowed only when built into a value-added product or service that does not allow extraction of a substantial portion of the data, and only if you prohibit recipients from s1.1 uses (T&C s1.6)"
+  obligations: "Reasonable security against unauthorised access or disclosure (T&C s1.7); at most one access per 24h (s1.8); keep the notices that appear in the data (s3); notify ICANN in writing of any CZDS security breach (ToU s2.2)"
+  termination: "Registry may terminate at any time, without notice, for any reason (T&C s7); registry may deny or revoke access for suspected Spec 4 s2.1.5 violations (Spec 4 s2.1.1); ICANN may terminate the login licence (ToU s5)"
+  governing_law: "California, Los Angeles County venue (T&C s6; ToU s7.4)"
+  term: "At least 3 months, free (Spec 4 s2.1.6-2.1.7); auto-renews since 15 Nov 2022 unless the registry turns it off; extension requests allowed within 30 days of expiry and must be approved before expiry"
+  blocklist_verdict: "Likely compatible. This is an interpretation, not legal advice. A curated list of individually confirmed malicious domains is a value-added product from which no substantial portion of a zone can be extracted. Never publish raw zone data, diffs, keyword-match lists or NS records. The blocklist licence must forbid marketing and high-volume automated queries to registries/registrars (s1.6 requires this). Keep evidence for each entry. For certainty, ask globalsupport@icann.org or the registries in writing."
+  sources:
+    - "https://czds-api.icann.org/czds/terms/condition"
+    - "https://czds-api.icann.org/czds/terms/use"
+    - "https://itp.cdn.icann.org/en/files/contracted-parties-communications/czds-system-updates-automatic-renewal-zone-access-15nov22-en.pdf"
+    - "https://czds.icann.org/help"
+access_process:
+  steps: "ICANN Account, then a CZDS profile (organisation, contact, address, phone, fax, email, IP address; 'All information must be verifiable'), then accept the Terms of Use, then one request per TLD with a reason and that TLD's T&C (plus SFTP IP addresses for SFTP-only TLDs)"
+  approval_time: "No deadline. The portal says 'Please allow one week'. Some requests have stayed pending for months (.web since 2026-07-24, .voting over a year, as of Aug 2026). Some registries add email credentialing with up to 45 days to decide."
+  escalation: "https://forms.icann.org/en/resources/compliance/registries/zfa/form"
+  tld_availability_check: "Public monthly report of active users per TLD, no login needed: https://dc2og7iuc7hkj.cloudfront.net/structure.json (latest: https://dc2og7iuc7hkj.cloudfront.net/2026/czds-users-2026-10.csv, 1,122 TLDs; every recommended TLD present; .au and .cc absent)"
+  sources:
+    - "https://czds.icann.org/help"
+    - "https://www.icann.org/en/resources/compliance/registries/zfa"
+    - "https://lists.icann.org/hyperkitty/list/gtld-tech@icann.org/thread/DIUJL6YQ2J5ZUMZV7C4IHOZCUJEV2E4D/"
+    - "https://lists.icann.org/hyperkitty/list/gtld-tech@icann.org/thread/EBXTBEQR7GPSILQGMCJD3FAGEXRKPHWC/"
+recommended_tlds:
+  # Abuse figures: Interisle, May 2025 to Apr 2026, malicious phishing domains and score per 10k
+  # (https://www.cybercrimeinfocenter.org/s/Phishing-TLDstats-May2025-Apr2026.csv).
+  # Every TLD below is confirmed in CZDS (Oct 2026 user report).
+  - tld: icu
+    phase: 1
+    reason: "71,070 malicious phishing domains, score 1,527/10k; about 18-26 MB/day"
+  - tld: cfd
+    phase: 1
+    reason: "67,461 malicious phishing domains, score 1,319/10k; about 17-25 MB/day"
+  - tld: sbs
+    phase: 1
+    reason: "59,737 malicious phishing domains, score 436/10k; about 35-50 MB/day"
+  - tld: bond
+    phase: 1
+    reason: "41,184 malicious phishing domains, score 359/10k; about 31-45 MB/day"
+  - tld: click
+    phase: 1
+    reason: "32,150 malicious phishing domains, score 444/10k; about 24-34 MB/day"
+  - tld: xin
+    phase: 1
+    reason: "Highest abuse rate (5,651/10k; 33,541 domains; top registrar Dominet (HK)); tiny zone (77,167 domains, Jul 2026)"
+  - tld: vip
+    phase: 1
+    reason: "79,694 malicious phishing domains, score 476/10k; about 2.02M domains (Jul 2026)"
+  - tld: "cyou, win, help, lat, pro"
+    phase: 1
+    reason: "High abuse rates (cyou 634, win 1,622, help 983, lat 628, pro 1,014 per 10k); NSEC3 opt-out, so small files"
+  - tld: "live, life, mobi"
+    phase: 1
+    reason: "High abuse rates (live 669, life 478, mobi 764 per 10k). NSEC3 WITHOUT opt-out (like .top), so files are bigger than domain counts suggest: roughly 70-120 MB each (estimate)"
+  - tld: top
+    phase: 1
+    reason: "2nd-largest absolute source (297,486 malicious phishing domains, 472/10k); main TLD for toll and parcel smishing. About 1.2-1.3 GB/day because it uses NSEC3 without opt-out"
+  - tld: xyz
+    phase: 2
+    reason: "79,436 malicious phishing domains, low rate (100/10k); about 250-360 MB/day"
+  - tld: info
+    phase: 2
+    reason: "71,488 malicious phishing domains (136/10k); about 145-210 MB/day; CZDS availability confirmed (7,950 users Oct 2026)"
+  - tld: shop
+    phase: 2
+    reason: "48,459 malicious phishing domains (123/10k); retail and parcel lures; about 125-180 MB/day"
+  - tld: online
+    phase: 2
+    reason: "38,185 malicious phishing domains (115/10k); about 105-150 MB/day; a backend migration in Mar-Apr 2026 distorted its diffs"
+  - tld: site
+    phase: 2
+    reason: "23,026 malicious phishing domains (133/10k); about 55-80 MB/day; same migration effect as .online"
+  - tld: "sydney, melbourne"
+    phase: 2
+    reason: "Australian city gTLDs, in CZDS; tiny (6,038 and 5,158 domains, Jul 2026); cheap coverage of AU-themed lures; little abuse recorded"
+  - tld: com
+    phase: 3
+    reason: "Largest absolute source (577,821 malicious phishing domains), low rate (35.7/10k); about 4.5 GB/day and about 171M names to sort. Add once the pipeline is proven; CT logs already cover much of it"
+  - tld: "net, org"
+    phase: 3
+    reason: "Low abuse rates (32 and 19.5 per 10k); about 0.33-0.47 GB/day each"
+  - tld: "au, cc (not available)"
+    phase: none
+    reason: "ccTLDs are not in CZDS (ICANN ZFA page; absent from the CZDS user report). .au has little malicious phishing (197 domains, 0.46/10k); .cc has a lot (72,266). Use CT logs / CertStream"
+sizes:
+  com: {approx_compressed: "~4.5 GB (scaled); 4,201,149,204 bytes measured Aug 2024", source: "https://lists.icann.org/hyperkitty/list/gtld-tech@icann.org/thread/2YG52UHHNAQCULTWK4UPV5MFWB4KHACY/ + https://www.icann.org/sites/default/files/mrr/com/com-transactions-202607-en.csv (171,294,594 domains)"}
+  net: {approx_compressed: "~0.33-0.47 GB (estimate; 12,791,752 domains x 26-37 B)", source: "https://www.icann.org/sites/default/files/mrr/net/net-transactions-202607-en.csv"}
+  org: {approx_compressed: "~0.47 GB (scaled); 425,177,338 bytes measured Aug 2024", source: "https://lists.icann.org/hyperkitty/list/gtld-tech@icann.org/thread/2YG52UHHNAQCULTWK4UPV5MFWB4KHACY/ + https://www.icann.org/sites/default/files/mrr/org/org-transactions-202607-en.csv (12,672,940)"}
+  top: {approx_compressed: "~1.2-1.3 GB (scaled); 895,301,507 bytes measured 2025-07-07; NSEC3 without opt-out", source: "https://lists.icann.org/hyperkitty/list/gtld-tech@icann.org/message/B6BUCMQIYPNQYRZVNG2TFIWLS5JODL7S/ + https://www.icann.org/sites/default/files/mrr/top/top-transactions-202607-en.csv (7,320,275)"}
+  xyz: {approx_compressed: "~250-360 MB (estimate; 9,635,766 domains)", source: "https://www.icann.org/sites/default/files/mrr/xyz/xyz-transactions-202607-en.csv"}
+  info: {approx_compressed: "~145-210 MB (estimate; 5,604,654)", source: "https://www.icann.org/sites/default/files/mrr/info/info-transactions-202607-en.csv"}
+  shop: {approx_compressed: "~125-180 MB (estimate; 4,880,796)", source: "https://www.icann.org/sites/default/files/mrr/shop/shop-transactions-202607-en.csv"}
+  online: {approx_compressed: "~105-150 MB (estimate; 4,025,772)", source: "https://www.icann.org/sites/default/files/mrr/online/online-transactions-202607-en.csv"}
+  site: {approx_compressed: "~55-80 MB (estimate; 2,148,440)", source: "https://www.icann.org/sites/default/files/mrr/site/site-transactions-202607-en.csv"}
+  vip: {approx_compressed: "~52-75 MB (estimate; 2,018,155)", source: "https://www.icann.org/sites/default/files/mrr/vip/vip-transactions-202607-en.csv"}
+  sbs: {approx_compressed: "~35-50 MB (estimate; 1,342,545)", source: "https://www.icann.org/sites/default/files/mrr/sbs/sbs-transactions-202607-en.csv"}
+  bond: {approx_compressed: "~31-45 MB (estimate; 1,201,416)", source: "https://www.icann.org/sites/default/files/mrr/bond/bond-transactions-202607-en.csv"}
+  click: {approx_compressed: "~24-34 MB (estimate; 911,809)", source: "https://www.icann.org/sites/default/files/mrr/click/click-transactions-202607-en.csv"}
+  icu: {approx_compressed: "~18-26 MB (estimate; 690,610)", source: "https://www.icann.org/sites/default/files/mrr/icu/icu-transactions-202607-en.csv"}
+  cfd: {approx_compressed: "~17-25 MB (estimate; 661,154)", source: "https://www.icann.org/sites/default/files/mrr/cfd/cfd-transactions-202607-en.csv"}
+  live: {approx_compressed: "~120 MB (rough estimate at .top's 172.6 B/domain; 681,877; NSEC3 without opt-out)", source: "https://www.icann.org/sites/default/files/mrr/live/live-transactions-202607-en.csv"}
+  life: {approx_compressed: "~80 MB (rough estimate at .top's ratio; 477,186; NSEC3 without opt-out)", source: "https://www.icann.org/sites/default/files/mrr/life/life-transactions-202607-en.csv"}
+  mobi: {approx_compressed: "~70 MB (rough estimate at .top's ratio; 398,748; NSEC3 without opt-out)", source: "https://www.icann.org/sites/default/files/mrr/mobi/mobi-transactions-202607-en.csv"}
+  xin: {approx_compressed: "~2-3 MB (estimate; 77,167)", source: "https://www.icann.org/sites/default/files/mrr/xin/xin-transactions-202607-en.csv"}
+  sydney: {approx_compressed: "<0.3 MB (estimate; 6,038)", source: "https://www.icann.org/sites/default/files/mrr/sydney/sydney-transactions-202607-en.csv"}
+  melbourne: {approx_compressed: "<0.3 MB (estimate; 5,158)", source: "https://www.icann.org/sites/default/files/mrr/melbourne/melbourne-transactions-202607-en.csv"}
+  gov: {approx_compressed: "482,798 bytes measured 2026-07-16", source: "https://lists.icann.org/hyperkitty/list/gtld-tech@icann.org/thread/ZVWLQFTYSGDKK3MUZFYSIQ6X7R5PSIL5/"}
+  method_note: "Measured ratios: .com 26.1, .org 37.0, .top 172.6 bytes per registered domain. Opt-out TLDs are estimated at 26-37 B/domain; non-opt-out TLDs (.top, .live, .life, .mobi; DNS check of NSEC3 flags on 2026-11-15) at about .top's ratio. Registered counts include names not in the zone, so real files may be smaller. Confirm with HEAD Content-Length after approval. Phase 1+2 total is about 2.6 GB/day; com+net+org add about 5.3 GB/day."

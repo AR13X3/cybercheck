@@ -1,0 +1,42 @@
+# certstream-server-go v1.10.1 config for CyberCheck.
+# Runs with host networking and listens on 127.0.0.1 only.
+webserver:
+  listen_addr: "127.0.0.1"
+  listen_port: 8431
+  real_ip: false
+  trusted_proxies: []
+  whitelist:
+    - "127.0.0.1/8"
+  full_url: "/full-stream"
+  lite_url: "/"
+  domains_only_url: "/domains-only"
+  cert_path: ""
+  cert_key_path: ""
+  compression_enabled: false
+
+prometheus:
+  enabled: true
+  listen_addr: "127.0.0.1"
+  listen_port: 8431
+  metrics_url: "/metrics"
+  expose_system_metrics: false
+  real_ip: false
+  whitelist:
+    - "127.0.0.1/8"
+
+# No Kafka/NSQ: CyberCheck reads the websocket directly.
+stream_processing: []
+
+general:
+  disable_default_logs: false
+  buffer_sizes:
+    websocket: 300
+    ctlog: 1000
+    dispatcher: 10000
+  drop_old_logs: true
+  # Resume from the saved index after a restart. The index is created at the
+  # current position on first start (see docker-compose.yml certstream-init),
+  # so the server never replays logs from entry 0.
+  recovery:
+    enabled: true
+    ct_index_file: "/app/data/ct_index.json"

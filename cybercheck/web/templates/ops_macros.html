@@ -1,0 +1,45 @@
+{#- Shared pieces of the reports and operations pages (reports, blocklist, CZDS, AI, bot, takedowns).
+    {% import "ops_macros.html" as ops %}. Every value is autoescaped; no inline style, script or on* handler.
+    See docs/UI.md for the components these build on. -#}
+{% import "_ui.html" as ui %}
+
+{#- A KPI row drawn as the reference's category tiles: icon + label at the top, a small caption, and a big light
+    number with a muted "/ total" at the bottom. Put tiles in {% call ops.tiles() %}.
+    The markup keeps ui.kpi()'s fixed start, <div class="n">VALUE</div><div class="l">LABEL</div> (tests match it),
+    so the "/ total" and the icon come after the label and CSS places them. tone: teal | green | amber | red |
+    violet tints the number and the icon (None: plain text, grey icon; colour only where it means something).
+    icon: a sprite name (shield, danger, alert, unknown, ai, live, done, report, clock, list, refresh, ...).
+    value is shown as given (it may be markup from a macro, such as ui.ago()). -#}
+{% macro tile(label, value, icon="dot", total=None, tone=None, hint=None, href=None, id=None) -%}
+{%- set inner -%}
+  <div class="n"{% if id %} id="{{ id }}"{% endif %}>{{ value }}</div><div class="l">{{ label }}</div>
+  {%- if hint %}<div class="kpi-hint">{{ hint }}</div>{% endif -%}
+  {{ ui.icon(icon, "kpi-ico") }}
+  {%- if total is not none %}<span class="kpi-of"><span class="visually-hidden">out of</span><span aria-hidden="true">/</span> {{ total }}</span>{% endif -%}
+{%- endset -%}
+{%- if href -%}<a class="kpi kpi--link{{ ' kpi--' ~ tone if tone }}" href="{{ href }}">{{ inner }}</a>
+{%- else -%}<div class="kpi{{ ' kpi--' ~ tone if tone }}">{{ inner }}</div>{%- endif -%}
+{%- endmacro %}
+
+{% macro tiles(label=None, class_="") -%}
+<div class="kpis ops-tiles{{ ' ' ~ class_ if class_ }}"{% if label %} role="group" aria-label="{{ label }}"{% endif %}>{{ caller() }}</div>
+{%- endmacro %}
+
+{#- Just the gauge ring of ui.gauge() (same geometry and classes), for cards that lay out their own numbers.
+    tone: None draws the green-amber-red gradient arc; a tone draws a flat arc in that colour. label is the
+    accessible text, with the numbers in it. -#}
+{% macro ring(value, total, label, tone=None, size="") -%}
+{%- set g = gauge_geom(value, total) -%}
+<span class="gauge ops-ring{{ ' gauge--' ~ size if size }}{{ ' gauge--' ~ tone if tone }}">
+  <svg class="gauge-ring" viewBox="0 0 100 100" role="img" aria-label="{{ label }}">
+    <path class="gauge-track" d="{{ g.track }}" fill="none" stroke-width="2" stroke-linecap="round"/>
+    {%- if g.arc %}
+    <path class="gauge-arc" d="{{ g.arc }}" fill="none" stroke="{{ 'url(#cc-grad-gauge)' if not tone else 'currentColor' }}" stroke-width="3" stroke-linecap="round"/>
+    {%- endif %}
+    <path class="gauge-ticks" d="{{ g.ticks }}" fill="none" stroke-width="1" stroke-dasharray="0.6 4.4" stroke-linecap="round"/>
+    <line class="gauge-needle" x1="50" y1="50" x2="{{ g.nx }}" y2="{{ g.ny }}" stroke-width="1.4" stroke-linecap="round"/>
+    <circle class="gauge-hub" cx="50" cy="50" r="2.2"/>
+    <circle class="gauge-end" cx="{{ g.ex }}" cy="{{ g.ey }}" r="2.6"/>
+  </svg>
+</span>
+{%- endmacro %}

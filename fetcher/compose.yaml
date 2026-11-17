@@ -1,0 +1,151 @@
+# CyberCheck sandboxed page fetcher: gluetun VPN + the Playwright fetcher that lives in its namespace.
+#
+# The integrator adds this to the root docker-compose.yml:
+#     include:
+#       - fetcher/compose.yaml
+# Both services are behind the "fetch" profile, so plain `docker compose up -d` never starts them.
+#
+# NOTE ON PATHS: with `include`, relative paths in THIS file resolve against its own directory
+# (fetcher/), per the Compose spec (project_directory defaults to the included file's parent). So the
+# build context is `.` (= fetcher/), post-rules is `./post-rules.txt`, and vpn.env is `../vpn.env`.
+#
+# Run it (interpolation needs the secrets from BOTH files; the fetcher receives ONLY its own vars, never
+# the app's .env):
+#     docker compose --env-file .env --env-file vpn.env --profile fetch up -d
+#     ./scripts/verify-sandbox.sh        # must pass before automatic reporting is allowed
+#
+# Secrets:
+#   - vpn.env (mode 600, NOT in git): the VPN provider credentials and GLUETUN_API_KEY. See vpn.env.example.
+#   - FETCHER_TOKEN lives in the app .env (the worker and web need it too).
+# The fetcher container has no env_file, so it gets only FETCHER_TOKEN, GLUETUN_API_KEY and FETCH_*,
+# never DATABASE_URL, ANTHROPIC_API_KEY or any other .env secret.
+#
+# Interpolation uses ${VAR:-} (never ${VAR:?}): Compose interpolates the whole file before applying
+# profiles, so a required-variable error here would break plain `docker compose up -d` of the core
+# services on a host without vpn.env. A missing secret fails CLOSED at runtime instead: the fetcher
+# refuses every request without a >= 16 char FETCHER_TOKEN, and refuses to fetch unless
+# GLUETUN_API_KEY is set AND the control server rejects requests that lack it.
+#
+# The one path `include` does not rebase (security_opt seccomp=...) is written relative to the ROOT
+# project directory (the repo root), because that is where this file is included from.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ---- VPN gate: everything the fetcher sends leaves through here or not at all ----
+  vpn:
+    image: qmcgaw/gluetun:v3.41.3@sha256:fa19cc76b2af13d57a8d3dc3066f2ada061b1c761b8aecf989b3877c0486e027
+    profiles: ["fetch"]
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1      # IPv4-only namespace (verify inside the container)
+      - net.ipv6.conf.default.disable_ipv6=1  # ...including interfaces created later (wg0)
+    env_file:
+      # repo-root vpn.env: VPN provider creds + GLUETUN_API_KEY (mode 600). required: false so the core
+      # stack still parses without it; gluetun then has no credentials, never becomes healthy, and the
+      # fetcher (depends_on service_healthy) never starts.
+      - path: ../vpn.env
+        required: false
+    environment:
+      # DNS: gluetun's DoT forwarder, but WITHOUT the malicious/ads blocklists (they would hide phishing
+      # domains). Block CGNAT/tailnet and 0.0.0.0/8 answers, which rebinding protection does not cover.
+      # Upstreams must be UNFILTERED resolvers too: gluetun's "quad9" is 9.9.9.9, Quad9's threat-blocking
+      # service, which answers NXDOMAIN for domains on its feeds (exactly the reported ones), and a
+      # failed lookup counts as a page failure towards live_state 'down' and a false takedown.
+      # "cloudflare" is 1.1.1.1 and "google" is 8.8.8.8 (both unfiltered; never "cloudflare security",
+      # "cloudflare family", "quad9", "quad9 secured", "cleanbrowsing ..." or "cira ...").
+      # scripts/verify-sandbox.sh checks this list.
+      DNS_SERVER: "on"
+      DNS_UPSTREAM_RESOLVER_TYPE: "dot"
+      DNS_UPSTREAM_RESOLVERS: "cloudflare,google"
+      DNS_KEEP_NAMESERVER: "off"
+      DNS_BLOCK_IP_PREFIXES: "100.64.0.0/10,0.0.0.0/8"
+      BLOCK_MALICIOUS: "off"
+      BLOCK_SURVEILLANCE: "off"
+      BLOCK_ADS: "off"
+      # Control server: loopback only, API-key auth on EVERY route (closes the no-auth public role that
+      # otherwise lets page JS restart the VPN). Key comes from vpn.env via interpolation.
+      HTTP_CONTROL_SERVER_ADDRESS: "127.0.0.1:8000"
+      HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE: '{"auth":"apikey","apikey":"${GLUETUN_API_KEY:-}"}'
+      HTTPPROXY: "off"
+      SHADOWSOCKS: "off"
+      # Allow the published fetcher API port inbound (default interface only, not wg0; leave
+      # FIREWALL_VPN_INPUT_PORTS unset).
+      # FIREWALL_OUTBOUND_SUBNETS is deliberately UNSET (it would route those subnets around the tunnel),
+      # and FIREWALL_ENABLED_DISABLING_IT_SHOOTS_YOU_IN_YOUR_FOOT must never be set.
+      FIREWALL_INPUT_PORTS: "8432"
+      TZ: "Australia/Sydney"
+      UPDATER_PERIOD: "${GLUETUN_UPDATER_PERIOD:-24h}"
+    volumes:
+      - ./post-rules.txt:/iptables/post-rules.txt:ro
+    # The ONLY published port. 127.0.0.1 only: never reachable from the LAN or tailnet.
+    ports:
+      - "127.0.0.1:8432:8432/tcp"
+    networks:
+      - ccvpn
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m      # = mem_limit: no swap (Docker otherwise allows as much swap as RAM)
+    logging: *logging
+
+  # ---- the fetcher: Playwright/Chromium, joins the VPN namespace, no network of its own ----
+  fetcher:
+    build: .
+    image: cybercheck-fetcher:local
+    profiles: ["fetch"]
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_healthy
+        restart: true
+    # No env_file: the fetcher is handed exactly these and nothing else.
+    environment:
+      FETCHER_TOKEN: "${FETCHER_TOKEN:-}"
+      GLUETUN_API_KEY: "${GLUETUN_API_KEY:-}"
+      GLUETUN_CONTROL_URL: "http://127.0.0.1:8000"
+      FETCH_EXPECTED_COUNTRY: "${FETCH_EXPECTED_COUNTRY-AU}"   # unset -> AU; set but empty disables the check
+      FETCH_CONCURRENCY: "${FETCH_CONCURRENCY:-2}"
+      FETCH_MAX_PAGES: "${FETCH_MAX_PAGES:-200}"
+    user: pwuser
+    init: true
+    security_opt:
+      - no-new-privileges:true
+      # Docker's default seccomp profile only allows unshare/setns/namespace clone with CAP_SYS_ADMIN,
+      # so with cap_drop ALL Chromium's namespace sandbox could not start. fetcher/seccomp.json allows
+      # those and denies the dangerous syscalls (docs/FETCHER.md). Compose resolves this path against
+      # the ROOT project directory (repo root, where docker-compose.yml includes this file).
+      - seccomp=fetcher/seccomp.json
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+      - /home/pwuser:size=128m,mode=1777       # pwuser's uid differs between image releases
+    shm_size: "1gb"
+    mem_limit: 1536m
+    # = mem_limit: no swap. Without it Docker allows another 1.5 GB of the host's swap, which a page
+    # allocating large buffers would push the other services' memory into before the OOM kill.
+    memswap_limit: 1536m
+    pids_limit: 512
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  # Dedicated IPv4-only bridge with a fixed subnet; gluetun is its only member. The subnet MUST match
+  # the REJECT line in fetcher/post-rules.txt and the host rules in scripts/host-firewall.sh.
+  ccvpn:
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.29.254.0/28
+          gateway: 172.29.254.1
+    driver_opts:
+      com.docker.network.bridge.name: ccvpn0

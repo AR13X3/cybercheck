@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{#- The overview ("/"). Data: pages_live.overview_data() gives stats, rows and live (view, terrain, pipeline, KPIs,
+    verdict tiles, brands). app.py's own "/" handler passes only stats and rows; the page then shows the numbers
+    it can and the feed. No inline style, script or handlers (CSP). overview.js draws the terrain on a canvas,
+    pins the notable domains, polls the feed, gauges and terrain, and adds keys; without it the terrain is the
+    coarser SVG below (its notable domains are links), every number is a link and the feed is a static list. -#}
+{% block title %}CyberCheck · Overview{% endblock %}
+{% block page_id %}overview{% endblock %}
+{% block body_class %}page-overview{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('overview.css') }}">{% endblock %}
+
+{% macro feed_line(r) -%}
+{%- set host = r.hostnames[0] if r.hostnames else r.registered_domain -%}
+{%- set final = r.final_score if r.final_score is not none else r.score -%}
+<li class="fl fl--{{ r.tier }}" data-id="{{ r.id }}" data-tier="{{ r.tier }}" data-t="{{ r.first_seen | utc('%Y-%m-%dT%H:%MZ') }}">
+  <time class="fl-time" datetime="{{ r.first_seen | iso }}" data-abs title="{{ r.first_seen | utc }}">{% if r.first_seen and (now() - r.first_seen).total_seconds() < 86400 %}{{ r.first_seen | utc('%H:%M:%S') }}{% else %}{{ r.first_seen | utc('%d %b') }}{% endif %}</time>
+  <span class="fl-tier">{{ ui.tier_pill(r.tier) }}</span>
+  <span class="fl-score" title="Domain-name score {{ r.score }}{% if r.final_score is not none %}, final score {{ r.final_score }}{% endif %}">{{ final }}</span>
+  <span class="fl-host">{{ ui.dom(host, r.unicode_domain, "/domain/" ~ r.id) }}</span>
+  <span class="fl-meta"><span class="fl-brand">{{ r.brand_id or 'no brand' }}</span>
+    {%- if r.live_state == 'live' %} {{ ui.live_pill('live') }}{% endif %}
+    {%- if r.ai_verdict %} {{ ui.verdict_pill(r.ai_verdict, r.ai_confidence) }}{% endif %}
+    {%- if r.status and r.status != 'open' %} {{ ui.status_pill(r.status) }}{% endif %}</span>
+</li>
+{%- endmacro %}
+
+{#- The live hit feed (a glass panel). overview.js polls /api/recent from data-max-id. -#}
+{% macro feed_panel(rows) -%}
+<section class="panel feed-panel" id="live-hits" aria-labelledby="feed-h">
+  <header class="panel-head">
+    <h2 class="panel-title" id="feed-h"><span class="live-dot" aria-hidden="true"></span>Live hits</h2>
+    <span class="panel-sub">newest first</span>
+    <a class="panel-more" href="/domains">All domains</a>
+  </header>
+  <div class="feed-bar js-only" hidden>
+    <button type="button" class="btn btn--sm" id="feed-pause" aria-pressed="false" data-shortcut-label="Pause or resume the live feed">Pause</button>
+    <span class="fpill feed-filter">
+      <label class="fpill-l" for="feed-filter">Show</label>
+      <span class="fpill-ctl"><select class="fpill-select" id="feed-filter">
+        <option value="all">all tiers</option>
+        <option value="flagged">review and high</option>
+        <option value="high">high only</option>
+      </select>{{ ui.icon("chevron-down", "fpill-caret") }}</span>
+    </span>
+  </div>
+  <p class="feed-state" id="feed-state" role="status" aria-live="polite">Showing the newest {{ rows | length }} hits. Reload the page to see new ones.</p>
+  <ol class="feed" id="feed" aria-labelledby="feed-h" data-max-id="{{ rows[0].id if rows else 0 }}" data-src="/api/recent">
+    {%- for r in rows %}
+    {{ feed_line(r) }}
+    {%- else %}
+    <li class="fl-empty" id="feed-empty">{{ ui.empty("No suspicious domains yet.", "The CT stream usually produces the first hits within minutes. If the ct segment at the top says stalled or no heartbeat, check the ingest service.") }}</li>
+    {%- endfor %}
+  </ol>
+</section>
+{%- endmacro %}
+
+{% block flash %}
+{%- set st = status_line() -%}
+{%- if st.stream == 'stale' -%}
+{{ ui.flash("The certificate stream has sent no heartbeat for " ~ ((st.heartbeat_age_s or 0) // 60) ~ " min, so new domains are not being found. Check the ingest service.", "error") }}
+{%- elif st.ok and st.stream == 'unknown' -%}
+{{ ui.flash("The certificate stream has not reported yet. Start the ingest service and the terrain fills in within a minute.", "info") }}
+{%- endif -%}
+{% endblock %}
+
+{% block body %}
+{%- set L = live if live is defined and live else none -%}
+{%- set st = status_line() -%}
+{%- set k = L.k if L else stats -%}
+<div class="ov" data-overview{% if L %} data-window="{{ L.window }}"{% endif %}>
+{%- if L %}
+{%- set ter, pipe, view, svg = L.ter, L.pipe, L.view, L.svg %}
+{%- set KINDS = {"protected": ("shield", "green"), "danger": ("danger", "red"), "alert": ("alert", "amber"), "unknown": ("unknown", "grey")} %}
+{%- set UNIT = {"6h": ("6 minutes", "15 minutes", "per 15 min"), "24h": ("10 minutes", "hour", "per hour"), "7d": ("hour", "6 hours", "per 6 h")}[L.window] %}
+{%- set NEXT = {"6h": ("24h", "24 hours"), "24h": ("7d", "7 days"), "7d": ("6h", "6 hours")}[L.window] %}
+
+{#- ---- hero: title and sparklines | terrain | window and gauges ------------------------------------------ #}
+<section class="hero ov-hero" aria-labelledby="ov-title">
+  <header class="ov-head">
+    <h1 id="ov-title">Threat overview</h1>
+    <p class="ov-sub">Data from the {{ view.label }}. Times are UTC.</p>
+  </header>
+
+  <div class="ov-left">
+    <div class="ov-stats">
+      {{ ui.stat("{:,}".format(k.certs_5m), label="Certificates, last 5 min", id="s-certs", size="md") }}
+      <a class="stat stat--md ov-stat-link" href="/live/list?window={{ L.window }}">
+        <span class="stat-l">Hits, {{ view.short }}</span>
+        <span class="stat-n"><span class="stat-val" id="s-hits">{{ "{:,}".format(ter.total.hits) }}</span><span class="of"> / {{ ter.total.high }} high</span></span>
+      </a>
+    </div>
+
+    <div class="ov-chart">
+      <div class="ov-chart-head"><h2 class="ov-chart-h">Hits intensity</h2><span class="ov-chart-sub">per {{ UNIT[0] }}</span></div>
+      {{ ui.sparkline(ter.spark, "Hits per " ~ UNIT[0] ~ ", " ~ view.label, start=view.short ~ " ago", end="now", id="sp-hits") }}
+    </div>
+    <div class="ov-chart">
+      <div class="ov-chart-head"><h2 class="ov-chart-h">High-tier peaks</h2><span class="ov-chart-sub">{{ UNIT[2] }}</span></div>
+      {{ ui.sparkline(ter.peaks, "High-tier hits " ~ UNIT[2] ~ ", " ~ view.label, kind="peaks", tone="warm", start=pipe.ticks[0], end="now", id="sp-high") }}
+    </div>
+
+    <ul class="ov-attn" aria-label="Waiting for you">
+      {%- set qn, qh = k.open_review or 0, k.open_high or 0 %}
+      <li><a class="ov-chip ov-chip--{{ 'red' if qh else ('amber' if qn else 'muted') }}" href="/review" data-kpi="open_review">{{ ui.icon("danger" if qh else ("alert" if qn else "shield")) }}<span class="kpi-val">{{ "{:,}".format(qn) }}</span> <span class="ov-chip-l">{{ "wait for review" if qn != 1 else "waits for review" }}{% if qh %}, {{ qh }} high{% endif %}</span></a></li>
+      <li><a class="ov-chip ov-chip--{{ 'amber' if k.reports_waiting else 'muted' }}" href="/reports" data-kpi="reports_waiting">{{ ui.icon("report") }}<span class="kpi-val">{{ "{:,}".format(k.reports_waiting) }}</span> <span class="ov-chip-l">{{ "reports to send" if k.reports_waiting != 1 else "report to send" }}{% if k.reports_failed %}, {{ k.reports_failed }} failed to send{% endif %}</span></a></li>
+    </ul>
+  </div>
+
+  <div class="ov-stage-wrap">
+    <div class="hero-stage ov-stage" id="terrain" data-terrain data-src="/api/live/terrain?window={{ L.window }}">
+      <canvas class="ov-canvas" id="terrain-canvas" hidden role="img"
+              aria-label="Threat terrain, {{ view.label }}: {{ '{:,}'.format(ter.total.hits) }} hits by first-seen time and domain-name score, {{ ter.total.high }} high tier and {{ ter.total.review }} review tier, over {{ ter.total.certs | compact }} certificates. Brighter means more hits. {{ ter.marks | length }} notable domains are pinned on it."></canvas>
+      <svg class="ov-fallback" id="terrain-svg" viewBox="0 0 {{ svg.w }} {{ svg.h }}" preserveAspectRatio="xMidYMid meet" role="group"
+           aria-label="Threat terrain, {{ view.label }}: {{ '{:,}'.format(ter.total.hits) }} hits by first-seen time (left to right) and domain-name score (bottom 40, top 100), {{ ter.total.high }} high tier and {{ ter.total.review }} review tier. The links are the notable domains.">
+        <defs><pattern id="tf-grid" width="10" height="10" patternUnits="userSpaceOnUse"><circle class="tf-base" cx="5" cy="5" r="0.9"/></pattern></defs>
+        <rect class="tf-field" x="0" y="0" width="{{ svg.w }}" height="{{ svg.h }}" fill="url(#tf-grid)"/>
+        {%- for y, label in svg.bands %}
+        <line class="tf-band" x1="0" y1="{{ y }}" x2="{{ svg.w }}" y2="{{ y }}" stroke-width="1" stroke-dasharray="1 4"/><text class="tf-band-l" x="4" y="{{ y - 4 }}">{{ label }}</text>
+        {%- endfor %}
+        {%- for d in svg.dots %}<circle class="{{ d[3] }}" cx="{{ d[0] }}" cy="{{ d[1] }}" r="{{ d[2] }}"/>{% endfor %}
+        <line class="tf-now" x1="{{ svg.now_x }}" y1="0" x2="{{ svg.now_x }}" y2="{{ svg.h }}" stroke-width="1" stroke-dasharray="2 3"/>
+        {%- for m in svg.marks %}{% set kd = KINDS.get(m.kind, KINDS.unknown) %}
+        <a class="tf-mark tf-mark--{{ kd[1] }}" href="/domain/{{ m.id }}" aria-label="{{ m.host }}: {{ m.what }}, score {{ m.score }}"><title>{{ m.host }}: {{ m.what }}, first seen {{ m.time }}</title><circle class="tf-mark-bg" cx="{{ m.cx }}" cy="{{ m.cy }}" r="9"/><use href="#i-{{ kd[0] }}" x="{{ m.cx - 6 }}" y="{{ m.cy - 6 }}" width="12" height="12"/></a>
+        {%- endfor %}
+      </svg>
+      <div class="hero-layer" id="terrain-layer"></div>
+      <span class="ov-axis ov-axis--start" aria-hidden="true">{{ view.short }} ago</span>
+      <span class="ov-axis ov-axis--end" aria-hidden="true">now</span>
+      {% call ui.fab_row("Terrain controls") %}
+        {{ ui.icon_button("clock", "Window: " ~ view.label ~ ". Switch to the last " ~ NEXT[1], href="/?window=" ~ NEXT[0], text=view.short, id="tf-window") }}
+        <span class="fab-sep" aria-hidden="true"></span>
+        {{ ui.icon_button("grid", "Show hits", pressed=True, js_only=True, data={"layer": "hits"}) }}
+        {{ ui.icon_button("pulse", "Show the certificate rate", pressed=True, js_only=True, data={"layer": "certs"}) }}
+        {{ ui.icon_button("eye", "Show the notable domains", pressed=True, js_only=True, data={"layer": "marks"}) }}
+        {{ ui.icon_button("filter", "Tier filter: all hits", js_only=True, data={"action": "tier"}, text="All", id="tf-tier") }}
+        <span class="fab-sep js-only" hidden aria-hidden="true"></span>
+        {{ ui.icon_button("pause", "Pause live updates", pressed=False, js_only=True, data={"action": "pause"}, id="tf-pause") }}
+        {{ ui.icon_button("list", "Open the hits of the " ~ view.label ~ " as a list", href="/live/list?window=" ~ L.window) }}
+      {% endcall %}
+    </div>
+  </div>
+
+  <div class="ov-right">
+    {{ ui.segmented([("/?window=6h", "6 h"), ("/?window=24h", "24 h"), ("/?window=7d", "7 d")], active="/?window=" ~ L.window, label="Time window") }}
+    <div class="ov-gauges">
+      {%- set spent, cap = st.ai_spent_today, st.ai_daily_cap %}
+      <div class="ov-gauge" data-gauge="ai">
+      {%- if st.ai == 'off' %}
+      {{ ui.gauge(0, 0, "AI spend today", shown="off", shown_total=("$%.0f" % cap) if cap else "no cap", sub="No API key, pages are not judged", href="/ai", id="g-ai") }}
+      {%- elif spent is none %}
+      {{ ui.gauge(0, 0, "AI spend today", shown="-", shown_total=("$%.0f" % cap) if cap else "-", sub="Spend could not be read", href="/ai", id="g-ai") }}
+      {%- else %}
+      {{ ui.gauge(spent, cap or 0, "AI spend today", shown="$%.2f" % spent, shown_total="$%.2f" % (cap or 0),
+                  sub=("Cap reached, checks pause until 00:00 UTC" if st.ai == 'over' else "%s%% of the daily cap" % (st.ai_pct or 0)), href="/ai", id="g-ai") }}
+      {%- endif %}
+      </div>
+      <div class="ov-gauge" data-gauge="live">
+      {{ ui.gauge(k.live_phishing, k.judged, "Live phishing pages", shown="{:,}".format(k.live_phishing), shown_total=k.judged | compact,
+                  sub="of the pages the AI judged", href="/live/list?show=live-phishing", id="g-live") }}
+      </div>
+      <div class="ov-gauge" data-gauge="queue">
+      {{ ui.gauge(k.open_review, k.open_review + k.decided_week, "Review queue", shown="{:,}".format(k.open_review), shown_total=(k.open_review + k.decided_week) | compact,
+                  sub="%s decided in 7 days" % "{:,}".format(k.decided_week), href="/review", id="g-queue") }}
+      </div>
+    </div>
+  </div>
+</section>
+
+{#- ---- pipeline grid | verdict tiles ---------------------------------------------------------------------- #}
+<div class="ov-bottom">
+  {% call ui.panel("Pipeline by stage", id="pipeline", sub="one dot per " ~ UNIT[1], class_="ov-pipe-panel", more_href="/live/list?window=" ~ L.window, more_label="List these hits") %}
+    {{ ui.dot_grid(pipe.rows, pipe.label, cols=pipe.ticks, class_="ov-pipe") }}
+    <div class="ov-pipe-foot">
+    {%- if ter.marks %}{% set m = ter.marks[0] %}
+    <p class="ov-latest"><a href="/domain/{{ m.id }}" class="ov-latest-link">{{ ui.tip(m.host ~ ": " ~ m.what, m.kind) }}</a></p>
+    {%- endif %}
+    <details class="ov-table">
+      <summary>Show the {{ view.label }} as a table</summary>
+      {% call ui.table(["Time (UTC)", ("Certificates", "num"), ("Hits", "num"), ("Review hits", "num"), ("High hits", "num"), ("Pages live", "num"), ("AI judged", "num")], label="Pipeline by " ~ UNIT[1] ~ ", " ~ view.label) %}
+        {%- for b in pipe.table %}
+        <tr>
+          <td class="nowrap">{{ b.label }}</td>
+          <td class="num">{{ "{:,}".format(b.certs) }}</td>
+          <td class="num">{{ "{:,}".format(b.hits) }}</td>
+          <td class="num">{% if b.review and b.hour_link %}<a href="/live/list?hour={{ b.t }}&amp;tier=review">{{ b.review }}</a>{% elif b.review %}{{ b.review }}{% else %}<span class="muted">0</span>{% endif %}</td>
+          <td class="num">{% if b.high and b.hour_link %}<a class="tone-red" href="/live/list?hour={{ b.t }}&amp;tier=high">{{ b.high }}</a>{% elif b.high %}{{ b.high }}{% else %}<span class="muted">0</span>{% endif %}</td>
+          <td class="num">{{ b.live or '' }}{% if not b.live %}<span class="muted">0</span>{% endif %}</td>
+          <td class="num">{{ b.judged or '' }}{% if b.phishing %} <span class="tone-red">({{ b.phishing }} phishing)</span>{% endif %}{% if not b.judged %}<span class="muted">0</span>{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      {% endcall %}
+    </details>
+    </div>
+  {% endcall %}
+
+  {% call ui.panel("Domains by AI verdict", id="verdicts", sub="review and high tier, " ~ view.label, more_href="/ai", more_label="AI spend and calls") %}
+    {%- set t = L.tiles %}
+    <div class="tiles ov-tiles">
+      {{ ui.tile("danger", "Phishing", "{:,}".format(t.phishing), t.judged | compact, "AI verdicts", href="/live/list?verdict=phishing&tier=flagged&window=" ~ L.window, id="t-phishing") }}
+      {{ ui.tile("alert", "Suspicious", "{:,}".format(t.suspicious), t.judged | compact, "AI verdicts", href="/live/list?verdict=suspicious&tier=flagged&window=" ~ L.window, id="t-suspicious") }}
+      {{ ui.tile("protected", "Benign or parked", "{:,}".format(t.cleared), t.judged | compact, "AI verdicts", href="/live/list?verdict=cleared&tier=flagged&window=" ~ L.window, id="t-cleared") }}
+      {{ ui.tile("unknown", "Not judged", "{:,}".format(t.unjudged), t.total | compact, "Domains", href="/live/list?verdict=unjudged&tier=flagged&window=" ~ L.window, id="t-unjudged") }}
+    </div>
+    {%- if t.total %}
+    {#- the same four counts as one bar: how the review and high tier hits split (SVG presentation attributes only) #}
+    {%- set parts = [("red", "phishing", t.phishing), ("amber", "suspicious", t.suspicious), ("green", "benign or parked", t.cleared), ("grey", "not judged", t.unjudged)] %}
+    <div class="ov-mix">
+      <svg class="ov-mix-bar" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="Of {{ t.total }} review and high tier hits: {% for p in parts %}{{ p[2] }} {{ p[1] }}{{ ', ' if not loop.last }}{% endfor %}">
+        <rect class="ov-mix-track" x="0" y="0" width="100" height="6" rx="3"/>
+        {%- set ns = namespace(x=0.0) %}
+        {%- for p in parts %}{% if p[2] %}{% set w = 100.0 * p[2] / t.total %}
+        <rect class="ov-mix-{{ p[0] }}" x="{{ '%.2f' % ns.x }}" y="0" width="{{ '%.2f' % ([w - 0.6, 0.4] | max) }}" height="6" rx="1"/>
+        {%- set ns.x = ns.x + w %}{% endif %}{% endfor %}
+      </svg>
+      <p class="ov-mix-legend" aria-hidden="true">
+        {%- for p in parts %}<span><i class="sw ov-mix-sw--{{ p[0] }}"></i>{{ (100 * p[2] / t.total) | round | int }}% {{ p[1] }}</span>{% endfor -%}
+      </p>
+    </div>
+    {%- else %}
+    <p class="ov-note">Nothing to judge in the {{ view.label }}. Review and high tier domains are fetched and judged as they arrive.</p>
+    {%- endif %}
+  {% endcall %}
+</div>
+
+{#- ---- live feed | hits by brand ------------------------------------------------------------------------- #}
+<div class="ov-lower">
+  {{ feed_panel(rows) }}
+
+  {% call ui.panel("Hits by brand", id="p-brands", sub="top 10, " ~ view.label, more_href="/domains", more_label="Filter all domains") %}
+    {%- if L.brands %}
+    <ol class="bars">
+      {%- for b in L.brands %}
+      <li class="bar-row">
+        <a class="bar-name" href="/domains?brand={{ b.brand_id | urlencode }}" title="All {{ b.brand_id }} domains">{{ b.name }}</a>
+        <a class="bar-total" href="/live/list?brand={{ b.brand_id | urlencode }}&amp;window={{ L.window }}" aria-label="{{ b.n }} hits for {{ b.name }}, {{ view.label }}">{{ "{:,}".format(b.n) }}</a>
+        <svg class="bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="bar-track" x="0" y="0" width="100" height="4" rx="2"/>{% for s in b.segs %}<rect class="bar-{{ s[0] }}" x="{{ s[1] }}" y="0" width="{{ s[2] }}" height="4"/>{% endfor %}</svg>
+        {%- if b.high or b.review %}
+        <span class="bar-tiers">
+          {%- if b.high %}<a class="bar-tier tone-red" href="/live/list?brand={{ b.brand_id | urlencode }}&amp;window={{ L.window }}&amp;tier=high"><span aria-hidden="true">▲</span>{{ b.high }} high</a>{% endif %}
+          {%- if b.review %} <a class="bar-tier tone-amber" href="/live/list?brand={{ b.brand_id | urlencode }}&amp;window={{ L.window }}&amp;tier=review"><span aria-hidden="true">◆</span>{{ b.review }} review</a>{% endif %}
+        </span>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ol>
+    <p class="bars-legend"><span><i class="sw sw-high"></i>▲ high</span><span><i class="sw sw-review"></i>◆ review</span><span><i class="sw sw-watch"></i>○ watch</span></p>
+    {%- else %}
+    {{ ui.empty("No hits in the " ~ view.label ~ ".", "Brands show here once the stream finds domains that imitate them.", "/?window=7d" if L.window != '7d' else none, "Show the last 7 days") }}
+    {%- endif %}
+  {% endcall %}
+</div>
+
+{%- else %}
+{#- ---- the app.py contract: stats and rows only ----------------------------------------------------------- #}
+{% call ui.page_head("Threat overview", sub="The certificate stream, new hits and what waits for you. Times are UTC.") %}{% endcall %}
+<div class="ov-stats ov-stats--plain">
+  {{ ui.stat("{:,}".format(stats.certs_5m or 0), label="Certificates, last 5 min", id="s-certs", size="md") }}
+  {{ ui.stat("{:,}".format(stats.hits_24h or 0), stats.high_24h or 0, label="Hits, 24 h / high", id="s-hits", size="md", href="/domains") }}
+  <a class="stat stat--md ov-stat-link" href="/review" data-kpi="open_review"><span class="stat-l">Waiting for review</span><span class="stat-n"><span class="stat-val kpi-val">{{ "{:,}".format(stats.open_review or 0) }}</span></span><span class="stat-sub">{{ "Nothing waits. New hits land here." if not stats.open_review else "Open the review queue" }}</span></a>
+  {{ ui.stat("{:,}".format(stats.confirmed or 0), label="Confirmed phishing", size="md", href="/domains?status=confirmed") }}
+</div>
+<div class="ov-lower ov-lower--plain">{{ feed_panel(rows) }}</div>
+{%- endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ asset('overview.js') }}" defer></script>{% endblock %}

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="same-origin">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#1c1e1f">
+<title>{% block title %}CyberCheck{% endblock %}</title>
+<link rel="preload" href="/static/fonts/Outfit-wght.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="{{ asset('app.css') }}">
+{% block head %}{% endblock %}
+<script src="{{ asset('app.js') }}" defer></script>
+</head>
+{%- set cur = request.url.path if request is defined and request else '' -%}
+{%- set st = status_line() -%}
+{%- set ng = nav_groups(cur) -%}
+<body class="{% block body_class %}{% endblock %}" data-page="{% block page_id %}{% endblock %}">
+<a class="skip-link" href="#main">Skip to content</a>
+
+{#- One icon sprite for the whole page: <svg class="ico"><use href="#i-shield"/></svg> (ui.icon does this).
+    Not display:none, because gradients defined in a hidden SVG do not paint. Badge icons are solid shapes in
+    currentColor with dark cut-outs; UI icons are 1.6 px strokes in currentColor. -#}
+<svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="cc-grad-gauge" gradientUnits="userSpaceOnUse" x1="12" y1="0" x2="88" y2="0">
+      <stop offset="0" stop-color="#8bd450"/><stop offset=".55" stop-color="#f39a3d"/><stop offset="1" stop-color="#ff6b6b"/>
+    </linearGradient>
+    <linearGradient id="cc-grad-teal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2fd3a7" stop-opacity=".9"/><stop offset="1" stop-color="#2fd3a7" stop-opacity=".15"/>
+    </linearGradient>
+    <linearGradient id="cc-grad-warm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f39a3d" stop-opacity=".95"/><stop offset="1" stop-color="#f39a3d" stop-opacity=".2"/>
+    </linearGradient>
+  </defs>
+  {#- badge shapes (solid) -#}
+  <symbol id="i-shield" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.6 19.4 5.4v6c0 4.9-3.2 8.5-7.4 10-4.2-1.5-7.4-5.1-7.4-10v-6Z"/><path fill="none" stroke="#1c1e1f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m8.7 12 2.3 2.3 4.3-4.5"/></symbol>
+  <symbol id="i-danger" viewBox="0 0 24 24"><path fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3.4 21.2 19.6H2.8Z"/><path stroke="#1c1e1f" stroke-width="2.1" stroke-linecap="round" d="M12 9.6v4.3"/><circle cx="12" cy="16.9" r="1.15" fill="#1c1e1f"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.6" fill="currentColor"/><path stroke="#1c1e1f" stroke-width="2.1" stroke-linecap="round" d="M12 7.2v5.6"/><circle cx="12" cy="16.4" r="1.15" fill="#1c1e1f"/></symbol>
+  <symbol id="i-unknown" viewBox="0 0 24 24"><rect x="3.4" y="3.4" width="17.2" height="17.2" rx="4.2" fill="currentColor"/><path stroke="#1c1e1f" stroke-width="2" stroke-linecap="round" d="m9 9 6 6m0-6-6 6"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.8c.7 5.2 3.9 8.5 9.2 9.2-5.3.7-8.5 3.9-9.2 9.2-.7-5.3-3.9-8.5-9.2-9.2 5.3-.7 8.5-4 9.2-9.2Z"/></symbol>
+  <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-opacity=".55"/></symbol>
+  <symbol id="i-done" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.6" fill="currentColor"/><path fill="none" stroke="#1c1e1f" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" d="m7.8 12.2 2.9 2.9 5.6-5.8"/></symbol>
+  <symbol id="i-report" viewBox="0 0 24 24"><path fill="currentColor" d="M6.5 2.8h7.4l4.6 4.6v12a1.8 1.8 0 0 1-1.8 1.8H6.5a1.8 1.8 0 0 1-1.8-1.8V4.6a1.8 1.8 0 0 1 1.8-1.8Z"/><path fill="none" stroke="#1c1e1f" stroke-width="1.8" stroke-linecap="round" d="M8.4 12.4h7.2M8.4 16h5"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></symbol>
+  {#- UI icons (strokes) -#}
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="6.4"/><path d="m16 16 4.4 4.4"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="6" width="18.8" height="12" rx="3"/><path d="M6.6 10h.01M10 10h.01M13.6 10h.01M17.2 10h.01M8 14.2h8"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.1"/><circle cx="9" cy="17" r="2.1"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 7.5h15M4.5 12h15M4.5 16.5h15"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m6.5 6.5 11 11m0-11-11 11"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/></symbol>
+  <symbol id="i-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m7 14 5-5 5 5"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m14 7-5 5 5 5"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m10 7 5 5-5 5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 2"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3.6 8.6 4.8L12 13.2 3.4 8.4Z"/><path d="m3.4 12.4 8.6 4.8 8.6-4.8M3.4 16.2 12 21l8.6-4.8"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.4h16l-6.2 7.2v5.8L10.2 20v-7.4Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6.5v11M15 6.5v11"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M8.2 5.8 18.4 12 8.2 18.2Z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19.4 12a7.4 7.4 0 1 1-2.2-5.2M19.6 4.6v4.2h-4.2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 12h13"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 12.4 4 4 8-8.4"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.4-6 4.4 12 2.4-6H21"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M9 7h11M9 12h11M9 17h11M4.6 7h.01M4.6 12h.01M4.6 17h.01"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.5"/><circle cx="12" cy="6" r="1.5"/><circle cx="18" cy="6" r="1.5"/><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/><circle cx="6" cy="18" r="1.5"/><circle cx="12" cy="18" r="1.5"/><circle cx="18" cy="18" r="1.5"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.4" width="16" height="14.6" rx="3"/><path d="M4 10h16M8.4 3.4v3.6m7.2-3.6v3.6"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5.6M6.6 11 12 5.6l5.4 5.4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 12S6.2 5.8 12 5.8 21.2 12 21.2 12 17.8 18.2 12 18.2 2.8 12 2.8 12Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="8.4" y="8.4" width="11.4" height="11.4" rx="2.6"/><path d="M15.6 8.4V6.8a2.6 2.6 0 0 0-2.6-2.6H6.8a2.6 2.6 0 0 0-2.6 2.6V13a2.6 2.6 0 0 0 2.6 2.6h1.6"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="/" aria-label="CyberCheck overview"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">CyberCheck</span></a>
+    <a class="menu-btn" href="#cc-nav" aria-controls="cc-nav" data-menu-toggle><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-menu"/></svg><span class="menu-btn-text">Menu</span></a>
+    <div class="topnav" id="cc-nav">
+      <nav class="nav" aria-label="Main">
+        <div class="nav-seg">
+          {%- for it in ng.primary %}
+          <a class="nav-link{{ ' is-active' if it.active }}" href="{{ it.path }}"{% if it.active %} aria-current="page"{% endif %}{% if it.chord %} data-chord="{{ it.chord }}" data-chord-label="{{ it.chord_label }}"{% endif %}><span class="nav-label">{{ it.label }}</span>
+            {%- if it.path == '/review' and st.open_review %}<span class="nav-badge{{ ' nav-badge--high' if st.open_high }}" data-status-badge="queue" title="{{ st.open_review }} waiting for review">{{ st.open_review }}</span>{% endif -%}
+          </a>
+          {%- endfor %}
+          {%- if ng.more %}
+          <details class="nav-more" data-nav-more>
+            <summary class="nav-link nav-more-btn{{ ' is-active' if ng.more_active }}"><span class="nav-label">{{ ng.more_active.label if ng.more_active else 'More' }}</span><span class="visually-hidden">{{ ', more sections' if ng.more_active else ' sections' }}</span><svg class="ico nav-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-down"/></svg></summary>
+            <div class="nav-menu">
+              {%- for it in ng.more %}
+              <a class="nav-menu-link{{ ' is-active' if it.active }}" href="{{ it.path }}"{% if it.active %} aria-current="page"{% endif %}{% if it.chord %} data-chord="{{ it.chord }}" data-chord-label="{{ it.chord_label }}"{% endif %}><span class="nav-label">{{ it.label }}</span>{% if it.chord %}<span class="nav-chord" aria-hidden="true">{{ it.chord }}</span>{% endif %}</a>
+              {%- endfor %}
+            </div>
+          </details>
+          {%- endif %}
+        </div>
+      </nav>
+      <form class="search-pill" method="get" action="/domains" role="search">
+        <label class="visually-hidden" for="cc-search">Search domains</label>
+        <input class="search-input" type="search" id="cc-search" name="q" placeholder="Search domains" autocomplete="off" maxlength="300" data-global-search>
+        <kbd class="search-kbd" aria-hidden="true">/</kbd>
+        <button class="search-go" type="submit" aria-label="Search" title="Search"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></button>
+      </form>
+      <button type="button" class="icon-btn topbar-help js-only" hidden data-help-open aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-keyboard"/></svg></button>
+      <a class="sheet-close" href="#main">Close menu</a>
+    </div>
+  </div>
+</header>
+
+<div class="statusbar">
+  <ul class="statusline" id="cc-status" aria-label="System status" data-status-url="/api/status">
+    {%- for s in st.segments %}
+    <li class="seg seg--{{ s.tone }}" data-status-key="{{ s.key }}" title="{{ s.title }}">
+      {%- if s.href %}<a class="seg-in" href="{{ s.href }}">{% else %}<span class="seg-in">{% endif -%}
+      <span class="seg-label">{{ s.label }}</span><span class="seg-glyph" aria-hidden="true">{{ s.glyph }}</span><span class="seg-value">{{ s.value }}</span>
+      {%- if s.href %}</a>{% else %}</span>{% endif -%}
+    </li>
+    {%- endfor %}
+  </ul>
+  <p class="statusbar-note">Private dashboard. Watching Australian brands.</p>
+</div>
+
+<main id="main" tabindex="-1">
+  <div class="flash-area" id="cc-flash">{% block flash %}{% endblock %}</div>
+{% block body %}{% endblock %}
+</main>
+
+<div class="toasts" id="cc-toasts" aria-live="polite" aria-atomic="false"></div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

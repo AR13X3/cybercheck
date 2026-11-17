@@ -1,0 +1,12 @@
+# Re-apply at boot and every 15 minutes (idempotent), so a firewall reload by another tool cannot leave
+# the bridge open for long.
+[Unit]
+Description=Keep the CyberCheck host firewall rules in place
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

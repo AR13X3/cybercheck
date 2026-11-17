@@ -1,0 +1,12 @@
+# Sunday 16:40 UTC = Monday ~03:40 in eastern Australia, so the 1-2 minute fetch pause lands at night there.
+# Change OnCalendar to a quiet hour in your own time zone.
+[Unit]
+Description=Run the CyberCheck isolation test weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 16:40:00 UTC
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

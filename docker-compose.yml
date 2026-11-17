@@ -1,0 +1,63 @@
+# CyberCheck: one host, Docker Compose.
+#   docker compose up -d                      core: CT stream, ingest, worker, dashboard
+#   docker compose --env-file .env --env-file vpn.env --profile fetch up -d
+#                                             + sandboxed page fetcher behind the VPN (docs/FETCHER.md)
+#   docker compose --profile bot up -d        + Telegram forwarding bot (needs TELEGRAM_BOT_TOKEN)
+#
+# Core services use host networking so they can reach Postgres on 127.0.0.1:5432 (DATABASE_URL in .env).
+# They never visit suspicious sites: only the fetcher does, and it lives in the VPN's network namespace.
+
+include:
+  - fetcher/compose.yaml   # vpn + fetcher, both behind the "fetch" profile
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  build: .
+  image: cybercheck-app:local
+  env_file: .env
+  network_mode: host
+  restart: unless-stopped
+  user: "1000:1000"
+  logging: *logging
+  volumes:
+    - ./config:/app/config:ro
+    - ./data:/app/data
+
+services:
+  certstream:
+    image: 0rickyy0/certstream-server-go:v1.10.1
+    network_mode: host            # listens on 127.0.0.1:8431 only (config/certstream.yaml)
+    restart: unless-stopped
+    user: "1000:1000"
+    mem_limit: 512m
+    logging: *logging
+    volumes:
+      - ./config/certstream.yaml:/app/config/config.yaml:ro
+      - ./data/certstream:/app/data
+
+  ingest:
+    <<: *app
+    command: ["ingest"]
+    mem_limit: 384m
+    depends_on: [certstream]
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    mem_limit: 512m
+
+  web:
+    <<: *app
+    command: ["web"]
+    mem_limit: 256m
+
+  bot:
+    <<: *app
+    command: ["bot"]
+    mem_limit: 192m
+    profiles: ["bot"]

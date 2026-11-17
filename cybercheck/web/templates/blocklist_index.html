@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "ops_macros.html" as ops %}
+{% block title %}CyberCheck · Blocklist{% endblock %}
+{% block page_id %}blocklist{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('ops.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ asset('ops.js') }}" defer></script>{% endblock %}
+{% block flash %}{% if message %}{{ ui.flash(message, message_tone) }}{% endif %}{% endblock %}
+
+{% block body %}
+{% call ui.page_head("Blocklist", sub="DNS blocklist files built from confirmed and high-confidence phishing domains. CyberCheck builds them here; publishing them anywhere is a separate manual step.") %}
+  {{ ui.post_button("/blocklist/rebuild", "Rebuild now", kind="primary") }}
+{% endcall %}
+
+{%- set n_listed = counts.listed or 0 %}
+{% call ops.tiles("Blocklist in numbers") %}
+  {{ ops.tile("domains listed", n_listed, "shield", tone="teal" if n_listed else None, href="#listed") }}
+  {{ ops.tile("confirmed by a reviewer", counts.confirmed or 0, "done", total=n_listed if n_listed else None) }}
+  {{ ops.tile("automated (score " ~ cfg.min_final_score ~ "+)", counts.automated or 0, "ai", total=n_listed if n_listed else None, tone="violet" if counts.automated else None) }}
+  {{ ops.tile("expiring within " ~ expiring_days ~ " days", counts.expiring or 0, "clock", total=n_listed if counts.expiring else None, tone="amber" if counts.expiring else None) }}
+  {{ ops.tile("excluded by reviewers", counts.excluded or 0, "unknown", href="#excluded" if excluded else None) }}
+  {% if held_czds %}{{ ops.tile("held back (CZDS terms)", held_czds, "alert", tone="amber", hint="found in zone files") }}{% endif %}
+  {{ ops.tile("last build", ui.ago(built_at, "never"), "refresh", hint=("serial " ~ serial) if serial else None, href="#build") }}
+{% endcall %}
+
+  {% call ui.panel("Listed domains", id="listed", sub=("newest " ~ limit ~ " of " ~ counts.listed) if (counts.listed or 0) > limit else "the domains in the files now, newest first", flush=True) %}
+    {% if rows %}
+    <div class="ops-tools js-only" hidden>
+      <div class="field field--inline">
+        <label for="listed-filter">Filter listed domains</label>
+        <input class="input" type="search" id="listed-filter" placeholder="domain, brand or reason" autocomplete="off" data-filter-for="listed-rows" data-search>
+      </div>
+      <span class="ops-count" data-filter-count="listed-rows" aria-live="polite"></span>
+    </div>
+    {% endif %}
+    {% call ui.table(["Domain", "Why it is listed", "Listed", "Expires", "Page", "Remove"], label="Listed domains", id="listed-rows", tall=True, rows=True, class_="table--cards") %}
+      {% for r in rows %}
+      <tr data-href="/domain/{{ r.id }}">
+        <td class="card-title">
+          {{ ui.dom(r.registered_domain, r.unicode_domain, href="/domain/" ~ r.id) }}
+          {% if r.brand_id %}<span class="ops-sub">{{ r.brand_id }}</span>{% endif %}
+          {% if r.registered_domain in hostname_only %}
+          <div class="ops-scope">{{ ui.pill("hostnames only", "amber", "◆", title="Only these hostnames are listed, never the whole domain") }}
+            <span class="ops-hosts">{{ hostname_only[r.registered_domain] | join(', ') }}</span></div>
+          {% endif %}
+        </td>
+        <td class="card-wide" data-label="Why it is listed">
+          {% if r.via == 'confirmed' %}{{ ui.status_pill('confirmed') }}<span class="ops-sub">by a reviewer</span>
+          {% else %}{{ ui.pill("score " ~ r.final_score, "amber", "▲", title="Combined score with page evidence") }}
+            {% if r.ai_verdict %}{{ ui.verdict_pill(r.ai_verdict, r.ai_confidence) }}{% endif %}
+            <span class="ops-sub">automated, not reviewed yet</span>
+          {% endif %}
+        </td>
+        <td class="nowrap" data-label="Listed">{{ ui.ago(r.blocklist_listed_at) }}</td>
+        <td class="nowrap" data-label="Expires">{% if r.blocklist_expires_at %}<span class="{{ 'tone-amber' if r.expires_soon }}">{% if r.expires_soon %}<span aria-hidden="true">▲ </span>{% endif %}{{ r.blocklist_expires_at | utc('%Y-%m-%d') }}</span>{% if r.expires_soon %}<span class="ops-sub">soon, unless still live</span>{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td>
+        <td data-label="Page">{% if r.live_state and r.live_state != 'unknown' %}{{ ui.live_pill(r.live_state) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+        <td class="card-wide">
+          <form method="post" action="/blocklist/{{ r.id }}/exclude" class="ops-exclude">
+            <label class="visually-hidden" for="note-{{ r.id }}">Why remove {{ r.registered_domain }} (optional)</label>
+            <input class="input" type="text" id="note-{{ r.id }}" name="note" maxlength="500" placeholder="why (optional)" autocomplete="off">
+            {{ ui.button("Remove from blocklist", small=True, confirm="Remove " ~ r.registered_domain ~ " from the blocklist?", confirm_ok="Remove from blocklist", confirm_detail="It is excluded from future builds until you allow it again. The files are rebuilt now.") }}
+          </form>
+        </td>
+      </tr>
+      {% else %}{{ ui.empty_row(6, "Nothing listed yet. Domains appear here after a build once you confirm one as phishing, or when one passes the automated rules.", "/review", "Open the review queue") }}{% endfor %}
+    {% endcall %}
+  {% endcall %}
+
+<div class="grid-2">
+    {% call ui.panel("Build status", id="build") %}
+      {% call ui.kv() %}
+        {% call ui.kv_item("Last build") %}{{ ui.ago(built_at, "never") }}{% if built_at %} <span class="muted">{{ built_at | utc }}</span>{% endif %}{% endcall %}
+        {% call ui.kv_item("Last change") %}{{ ui.ago(updated_at, "never") }}{% if serial %} <span class="muted">serial {{ serial }}</span>{% endif %}{% endcall %}
+        {% call ui.kv_item("Files") %}{% if built %}{{ ui.health_pill('ok', 'written') }}{% else %}{{ ui.health_pill('off', 'not built yet') }}{% endif %}{% endcall %}
+        {% call ui.kv_item("Schedule") %}<span class="ops-prose">Builds every few minutes and soon after a review change.</span>{% endcall %}
+        {% if requested_at %}{% call ui.kv_item("Pending") %}<span class="tone-amber"><span aria-hidden="true">▲ </span>A rebuild was requested {{ ui.ago(requested_at) }}.</span> <span class="ops-prose">The worker runs it within a minute.</span>{% endcall %}{% endif %}
+        {% call ui.kv_item("Publishing") %}<span class="ops-prose">Separate and opt-in. Nothing here publishes the list. Run <code>scripts/publish-blocklist.sh</code> by hand once the licence is decided.</span>{% endcall %}
+      {% endcall %}
+    {% endcall %}
+
+    {% call ui.panel("What gets listed", id="rules") %}
+      <ul class="ops-rules">
+        <li>{{ ui.icon("done", "tone-teal") }}<span>Domains a reviewer confirmed as phishing.</span></li>
+        <li>{{ ui.icon("ai", "tone-violet") }}<span>Open domains with a combined score of {{ cfg.min_final_score }} or more and an AI phishing verdict.</span></li>
+        <li>{{ ui.icon("danger", "tone-red") }}<span>Never false positives, benign, excluded, official or .gov.au domains{% if not cfg.czds_ok %}, nor domains found in CZDS zone files (set BLOCKLIST_CZDS_TERMS_OK=yes once the list licence forbids CZDS s1.1 uses){% endif %}.</span></li>
+        <li>{{ ui.icon("alert", "tone-amber") }}<span>The whole domain is blocked only when its registrable name itself impersonates a brand. When the brand is only in a subdomain, or the domain is a shared hosting platform, only the hostnames seen in certificates are listed. The same goes for an unreviewed domain registered long before it was first seen, until a reviewer confirms it.</span></li>
+        <li>{{ ui.icon("clock", "muted") }}<span>Entries expire {{ cfg.days }} days after the site was last seen live or listed.</span></li>
+      </ul>
+      {% call ui.kv() %}
+        {% call ui.kv_item("Homepage") %}{{ ui.url_text(cfg.homepage) if cfg.homepage else 'not set' }}{% endcall %}
+        {% call ui.kv_item("Contact") %}{{ cfg.contact or 'not set' }}{% endcall %}
+        {% call ui.kv_item("Licence") %}{{ cfg.license }}{% endcall %}
+      {% endcall %}
+    {% endcall %}
+</div>
+
+{% if excluded %}
+{% call ui.panel("Excluded by reviewers", id="excluded", sub="never listed while excluded", flush=True) %}
+  {% call ui.table(["Domain", "Review status", "Excluded", "By", "Action"], label="Domains excluded from the blocklist", rows=True) %}
+    {% for r in excluded %}
+    <tr data-href="/domain/{{ r.id }}">
+      <td>{{ ui.dom(r.registered_domain, r.unicode_domain, href="/domain/" ~ r.id) }}{% if r.brand_id %}<span class="ops-sub">{{ r.brand_id }}</span>{% endif %}</td>
+      <td>{{ ui.status_pill(r.status) }}</td>
+      <td class="nowrap">{{ ui.ago(r.blocklist_excluded_at) }}</td>
+      <td class="muted">{{ r.blocklist_excluded_by or '' }}</td>
+      <td class="actions">{{ ui.post_button("/blocklist/" ~ r.id ~ "/include", "Allow on blocklist again", small=True) }}</td>
+    </tr>
+    {% endfor %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+
+<div class="grid-2">
+  {% call ui.panel("Files", id="files", sub="for Pi-hole, AdGuard Home, dnsmasq, unbound or BIND", flush=True) %}
+    {% call ui.table(["File", "Format", ("Size", "num"), "Link"], label="Blocklist files") %}
+      {% for f in files %}
+      <tr>
+        <td class="nowrap">{% if f.size is not none %}<a class="dom" href="{{ f.url }}" download>{{ f.name }}</a>{% else %}<span class="dom">{{ f.name }}</span>{% endif %}</td>
+        <td class="ops-prose">{{ f.about }}</td>
+        <td class="num nowrap">{% if f.size is not none %}{{ "{:,}".format(f.size) }} B{% else %}<span class="muted">not built yet</span>{% endif %}</td>
+        <td class="actions">{% if f.size is not none %}<button type="button" class="btn btn--quiet btn--sm js-only" hidden data-copy-path="{{ f.url }}">Copy link</button>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
+
+  {% call ui.panel("Recent changes", id="changes", flush=True) %}
+    {% call ui.table(["When", "Change", "Domain", "Detail"], label="Recent blocklist changes") %}
+      {% for e in events %}
+      {%- set l = event_label(e.kind) %}
+      <tr>
+        <td class="nowrap">{{ ui.ago(e.at) }}</td>
+        <td>{{ ui.pill(l[0], l[1], l[2]) }}</td>
+        <td><a class="dom" href="/domain/{{ e.id }}">{{ e.registered_domain }}</a></td>
+        <td class="ops-prose">{{ e.detail.reason or e.detail.note or '' }}{% if e.detail.by %} by {{ e.detail.by }}{% endif %}</td>
+      </tr>
+      {% else %}{{ ui.empty_row(4, "No changes yet. Each build that adds or removes a domain is logged here.") }}{% endfor %}
+    {% endcall %}
+  {% endcall %}
+</div>
+{% endblock %}

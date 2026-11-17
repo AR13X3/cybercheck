@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "ops_macros.html" as ops %}
+{% block title %}CyberCheck · Takedowns{% endblock %}
+{% block page_id %}takedown{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('ops.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ asset('ops.js') }}" defer></script>{% endblock %}
+
+{% set AGG_HEAD = [("Flagged", "num"), ("Taken down", "num"), ("Still up", "num"), ("Median from first seen", "num"), ("p90", "num"), ("Median from report", "num"), ("p90", "num"), ("Reported", "num")] %}
+{% macro agg_cells(r) -%}
+  <td class="num">{{ r.total }}</td>
+  <td class="num">{{ r.down }}</td>
+  <td class="num">{{ r.up }}{% if r.live_now %} <span class="tone-red" title="with a live page"><span aria-hidden="true">●</span> {{ r.live_now }} live</span>{% endif %}</td>
+  <td class="num">{{ r.med_first_s }}</td>
+  <td class="num muted">{{ r.p90_first_s }}</td>
+  <td class="num">{{ r.med_rep_s }}</td>
+  <td class="num muted">{{ r.p90_rep_s }}</td>
+  <td class="num muted">{{ r.n_rep }}</td>
+{%- endmacro %}
+{% macro hbar(w, n) -%}
+<span class="hbar-cell"><svg class="hbar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="hbar-track" x="0" y="0" width="100" height="8"/><rect class="hbar-fill" x="0" y="0" width="{{ w }}" height="8"/></svg><span class="hbar-n">{{ n }}</span></span>
+{%- endmacro %}
+{% macro hosting(r) -%}{% if r.asn %}AS{{ r.asn }} {{ r.as_name or '' }}{% else %}<span class="muted">-</span>{% endif %}{%- endmacro %}
+
+{% block body %}
+{% call ui.page_head("Takedowns", sub="How fast phishing domains go away after CyberCheck finds or reports them, per registrar and hosting network.") %}
+  {% call ui.filter_bar(action="/takedown", label="Takedown filters", apply="Show") %}
+    {{ ui.filter_pill("Domains", "scope", scope_options, selected=scope, id="scope") }}
+  {% endcall %}
+{% endcall %}
+
+{%- set total = summary.total or 0 %}
+<div class="ops-head-row">
+  {% call ops.tiles("Takedowns in numbers") %}
+    {{ ops.tile("flagged domains", total, "list") }}
+    {{ ops.tile("taken down", summary.down or 0, "done", total=total if total else None, tone="teal" if summary.down else None) }}
+    {{ ops.tile("still up", summary.up or 0, "danger", total=total if summary.up else None, tone="red" if summary.live_now else ("amber" if summary.up else None), hint=(summary.live_now ~ " with a live page") if summary.live_now else None, href="#still-up" if summary.up else None) }}
+    {{ ops.tile("median, first seen to takedown", summary.med_first_s, "clock", hint="p90 " ~ summary.p90_first_s) }}
+    {{ ops.tile("median, report to takedown", summary.med_rep_s, "report", hint="p90 " ~ summary.p90_rep_s ~ ", from " ~ (summary.n_rep or 0) ~ " reported") }}
+  {% endcall %}
+  <div class="ops-gauge-card">
+    {{ ui.gauge(summary.down or 0, total, "Gone so far", shown=(summary.down or 0) | compact, shown_total=total | compact, tone="teal") }}
+  </div>
+</div>
+
+<div class="grid-aside">
+  {% call ui.panel("How long until takedown", id="hist", sub="domains already taken down", flush=True) %}
+    {% call ui.table(["Time to takedown", "From first seen", "From report"], label="Time to takedown, by bucket", class_="hist") %}
+      {% for b in histogram %}
+      <tr>
+        <td class="nowrap">{{ b.label }}</td>
+        <td>{{ hbar(b.first_w, b.first) }}</td>
+        <td>{{ hbar(b.rep_w, b.rep) }}</td>
+      </tr>
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
+
+  {% call ui.panel("What these numbers mean", id="method") %}
+    <p>These numbers only cover domains CyberCheck flagged and is tracking ({{ scope_label | lower }}). They are not a
+    registrar's or hosting provider's overall record, and small groups say little.</p>
+    <p>A domain counts as taken down when CyberCheck first saw one of these: NXDOMAIN on two checks in a row, a registry
+    <code>clientHold</code> or <code>serverHold</code> status in RDAP, or the page fetcher finding the page gone after it
+    had been live. Tracked domains are checked about hourly for {{ track_days }} days, so times are accurate to roughly an hour.</p>
+    <p class="hint">"First seen" is when CyberCheck first saw the domain, usually from its certificate. Report times only count takedowns that came after the report.</p>
+  {% endcall %}
+</div>
+
+{{ ui.tabs([("#by-registrar", "By registrar", by_registrar | length), ("#by-as", "By hosting network", by_as | length)], active="#by-registrar", label="Group takedown times") }}
+{% call ui.panel("By registrar", id="by-registrar", flush=True) %}
+  {% call ui.table(["Registrar"] + AGG_HEAD, label="Takedown times by registrar") %}
+    {% for r in by_registrar %}
+    <tr>
+      <td>{% if r.name %}{{ r.name }}{% else %}<span class="muted">unknown (no RDAP data)</span>{% endif %}{% if r.iana_id %} <span class="muted">IANA {{ r.iana_id }}</span>{% endif %}</td>
+      {{ agg_cells(r) }}
+    </tr>
+    {% else %}{{ ui.empty_row(9, "No flagged domains yet. Confirm a domain as phishing and it is tracked here.", "/review", "Open the review queue") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+{% call ui.panel("By hosting network", id="by-as", flush=True) %}
+  {% call ui.table(["Hosting network"] + AGG_HEAD, label="Takedown times by hosting network") %}
+    {% for r in by_as %}
+    <tr>
+      <td>{% if r.asn %}AS{{ r.asn }} {{ r.name or '' }}{% else %}<span class="muted">unknown (never resolved)</span>{% endif %}</td>
+      {{ agg_cells(r) }}
+    </tr>
+    {% else %}{{ ui.empty_row(9, "No flagged domains yet.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+
+{% call ui.panel("Still up", id="still-up", sub=(still_up | length) ~ ("+, oldest first" if still_up | length == 200 else ", oldest first"), flush=True) %}
+  {% call ui.table(["Domain", ("Age", "num"), ("Since report", "num"), "DNS", "Page", "Registrar", "Hosting", "Last check"], label="Domains still up", tall=True, rows=True) %}
+    {% for r in still_up %}
+    <tr data-href="/domain/{{ r.id }}">
+      <td>{{ ui.dom(r.registered_domain, r.unicode_domain, href="/domain/" ~ r.id) }}{% if r.brand_id %}<span class="ops-sub">{{ r.brand_id }}</span>{% endif %}</td>
+      <td class="num nowrap">{% if r.age_tone %}<span class="tone-{{ r.age_tone }}" title="{{ 'up for more than 7 days' if r.age_tone == 'red' else 'up for more than 3 days' }}"><span aria-hidden="true">{{ '■' if r.age_tone == 'red' else '▲' }} </span>{{ r.age_s }}</span>{% else %}{{ r.age_s }}{% endif %}</td>
+      <td class="num nowrap">{% if r.reported_at %}{{ r.reported_s }}{% else %}<span class="muted" title="not reported yet">-</span>{% endif %}</td>
+      <td class="muted">{{ (r.dns_state or '-') | replace('_', ' ') }}</td>
+      <td>{% if r.live_state and r.live_state != 'unknown' %}{{ ui.live_pill(r.live_state) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td>{{ r.registrar or '-' }}</td>
+      <td>{{ hosting(r) }}</td>
+      <td class="nowrap">{{ ui.ago(r.enriched_at) }}</td>
+    </tr>
+    {% else %}{{ ui.empty_row(8, "Nothing flagged is still up.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+
+{% call ui.panel("Recently taken down", id="recent", sub="newest first", flush=True) %}
+  {% call ui.table(["Domain", "Signal", "When", ("From first seen", "num"), ("From report", "num"), "Registrar", "Hosting"], label="Recently taken down", rows=True) %}
+    {% for r in recent %}
+    <tr data-href="/domain/{{ r.id }}">
+      <td>{{ ui.dom(r.registered_domain, r.unicode_domain, href="/domain/" ~ r.id) }}{% if r.brand_id %}<span class="ops-sub">{{ r.brand_id }}</span>{% endif %}</td>
+      <td>{{ ui.pill(r.signal_s, "teal", "✓", title="How CyberCheck saw it go") }}</td>
+      <td class="nowrap">{{ ui.ago(r.takedown_at) }}</td>
+      <td class="num">{{ r.h_first_s }}</td>
+      <td class="num">{{ r.h_rep_s }}</td>
+      <td>{{ r.registrar or '-' }}</td>
+      <td>{{ hosting(r) }}</td>
+    </tr>
+    {% else %}{{ ui.empty_row(7, "No takedowns seen yet. Tracked domains are checked about hourly.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

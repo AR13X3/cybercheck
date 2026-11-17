@@ -1,0 +1,291 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "architectures": [
+    "SCMP_ARCH_X86_64"
+  ],
+  "syscalls": [
+    {
+      "names": [
+        "_sysctl",
+        "acct",
+        "add_key",
+        "bpf",
+        "clock_adjtime",
+        "clock_adjtime64",
+        "clock_settime",
+        "clock_settime64",
+        "create_module",
+        "delete_module",
+        "fanotify_init",
+        "finit_module",
+        "fsconfig",
+        "fsmount",
+        "fsopen",
+        "fspick",
+        "get_kernel_syms",
+        "init_module",
+        "io_uring_enter",
+        "io_uring_register",
+        "io_uring_setup",
+        "ioperm",
+        "iopl",
+        "kcmp",
+        "kexec_file_load",
+        "kexec_load",
+        "keyctl",
+        "lookup_dcookie",
+        "mount",
+        "mount_setattr",
+        "move_mount",
+        "name_to_handle_at",
+        "nfsservctl",
+        "open_by_handle_at",
+        "open_tree",
+        "perf_event_open",
+        "pidfd_getfd",
+        "pivot_root",
+        "process_vm_readv",
+        "process_vm_writev",
+        "ptrace",
+        "query_module",
+        "quotactl",
+        "quotactl_fd",
+        "reboot",
+        "request_key",
+        "setdomainname",
+        "sethostname",
+        "settimeofday",
+        "stime",
+        "swapoff",
+        "swapon",
+        "sysfs",
+        "syslog",
+        "umount",
+        "umount2",
+        "uselib",
+        "userfaultfd",
+        "ustat",
+        "vhangup",
+        "vm86",
+        "vm86old"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "CyberCheck fetcher: deny kernel-module, mount, keyring, bpf, perf, ptrace, io_uring, clock, swap, reboot and similar syscalls. clone/clone3/unshare/setns stay allowed: Chromium's user-namespace sandbox needs them (Docker's default profile allows them only with CAP_SYS_ADMIN, which cap_drop ALL removes). Only the x86_64 ABI is listed: 32-bit (int 0x80 / socketcall) and x32 system calls are refused as a foreign architecture, so they cannot get around the socket() argument checks."
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 97,
+      "args": [
+        {
+          "index": 0,
+          "value": 17,
+          "op": "SCMP_CMP_GE"
+        }
+      ],
+      "comment": "socket(): address families >= 17 (AF_PACKET, AF_RDS, AF_TIPC, AF_BLUETOOTH, AF_ALG, AF_VSOCK, AF_XDP, ...) fail with EAFNOSUPPORT. An unsigned 64-bit comparison, so a family with junk in the upper 32 bits (which the kernel truncates away) is denied too. Chromium, Node and Python use only AF_UNIX (1), AF_INET (2), AF_INET6 (10) and AF_NETLINK (16)."
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 97,
+      "args": [
+        {
+          "index": 0,
+          "value": 3,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 4,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 5,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 6,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 7,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 8,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 9,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 11,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 12,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 13,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 14,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 15,
+          "op": "SCMP_CMP_EQ"
+        }
+      ],
+      "comment": "socket(): the obsolete families below 16 (AF_AX25, AF_IPX, AF_APPLETALK, AF_NETROM, AF_BRIDGE, AF_ATMPVC, AF_X25, AF_ROSE, AF_DECnet, AF_NETBEUI, AF_SECURITY, AF_KEY) fail with EAFNOSUPPORT. Several conditions on the same argument are OR-ed (one rule each); a value with upper bits set is already caught by the >= 17 rule."
+    },
+    {
+      "names": [
+        "socketpair"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 97,
+      "args": [
+        {
+          "index": 0,
+          "value": 17,
+          "op": "SCMP_CMP_GE"
+        }
+      ],
+      "comment": "socketpair(): address families >= 17 (AF_PACKET, AF_RDS, AF_TIPC, AF_BLUETOOTH, AF_ALG, AF_VSOCK, AF_XDP, ...) fail with EAFNOSUPPORT. An unsigned 64-bit comparison, so a family with junk in the upper 32 bits (which the kernel truncates away) is denied too. Chromium, Node and Python use only AF_UNIX (1), AF_INET (2), AF_INET6 (10) and AF_NETLINK (16)."
+    },
+    {
+      "names": [
+        "socketpair"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 97,
+      "args": [
+        {
+          "index": 0,
+          "value": 3,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 4,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 5,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 6,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 7,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 8,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 9,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 11,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 12,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 13,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 14,
+          "op": "SCMP_CMP_EQ"
+        },
+        {
+          "index": 0,
+          "value": 15,
+          "op": "SCMP_CMP_EQ"
+        }
+      ],
+      "comment": "socketpair(): the obsolete families below 16 (AF_AX25, AF_IPX, AF_APPLETALK, AF_NETROM, AF_BRIDGE, AF_ATMPVC, AF_X25, AF_ROSE, AF_DECnet, AF_NETBEUI, AF_SECURITY, AF_KEY) fail with EAFNOSUPPORT. Several conditions on the same argument are OR-ed (one rule each); a value with upper bits set is already caught by the >= 17 rule."
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 93,
+      "args": [
+        {
+          "index": 0,
+          "value": 4294967295,
+          "valueTwo": 16,
+          "op": "SCMP_CMP_MASKED_EQ"
+        },
+        {
+          "index": 2,
+          "value": 4294967295,
+          "valueTwo": 12,
+          "op": "SCMP_CMP_MASKED_EQ"
+        }
+      ],
+      "comment": "socket(AF_NETLINK, *, NETLINK_NETFILTER (nf_tables)) fails with EPROTONOSUPPORT: with the user and network namespaces Chromium's sandbox needs, a process gets a namespaced CAP_NET_ADMIN, and this is a usual kernel privilege-escalation surface. Conditions on different arguments are AND-ed; the masks compare only the low 32 bits the kernel uses. NETLINK_ROUTE (0), which Chromium uses, stays allowed."
+    },
+    {
+      "names": [
+        "socket"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 93,
+      "args": [
+        {
+          "index": 0,
+          "value": 4294967295,
+          "valueTwo": 16,
+          "op": "SCMP_CMP_MASKED_EQ"
+        },
+        {
+          "index": 2,
+          "value": 4294967295,
+          "valueTwo": 6,
+          "op": "SCMP_CMP_MASKED_EQ"
+        }
+      ],
+      "comment": "socket(AF_NETLINK, *, NETLINK_XFRM) fails with EPROTONOSUPPORT: with the user and network namespaces Chromium's sandbox needs, a process gets a namespaced CAP_NET_ADMIN, and this is a usual kernel privilege-escalation surface. Conditions on different arguments are AND-ed; the masks compare only the low 32 bits the kernel uses. NETLINK_ROUTE (0), which Chromium uses, stays allowed."
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% from "reports_macros.html" import status_pill, kind_label, via_label, domain_link, auto_pill, email_form,
+   manual_body, reject_form, row_actions, step_icon %}
+{% block title %}CyberCheck · Report {{ r.id }}{% endblock %}
+{% block page_id %}report{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('ops.css') }}"><link rel="stylesheet" href="{{ asset('reports.css') }}">{% endblock %}
+{% block flash %}{% if message %}{{ ui.flash(message, message_tone) }}{% endif %}{% endblock %}
+{% block body %}
+{%- set step = r.step -%}
+{%- set editing = r.kind == 'email' and r.status in ('pending_review', 'failed') -%}
+{%- set filing = r.kind == 'manual' and r.status == 'pending_review' -%}
+{%- set ev = evidence -%}
+
+{{ ui.page_head(r.label, back="/reports", back_label="reports") }}
+<p class="rq-meta">
+  {{ status_pill(r.status) }}
+  <span class="rq-meta-item">{{ kind_label(r.kind) }} report for {{ domain_link(r) }}</span>
+  {{ auto_pill(r) }}
+  <span class="rq-meta-item muted">created {{ ui.ago(r.created_at) }}</span>
+</p>
+
+{#- Enter in a draft field must not trigger the next-step button (which comes first in the page): the
+    form's default button is this disabled one. -#}
+{% if editing %}<button type="submit" form="draft-{{ r.id }}" disabled hidden aria-hidden="true" tabindex="-1">Enter does nothing here</button>{% endif %}
+
+<section class="rq-next rq-next--{{ step.tone }}" aria-labelledby="rq-next-k rq-next-h">
+  <span class="rq-next-badge" aria-hidden="true">{{ step_icon(step) }}</span>
+  <div class="rq-next-text">
+    <p class="rq-next-kicker" id="rq-next-k">Next step</p>
+    <h2 class="rq-next-title" id="rq-next-h">{{ step.title }}</h2>
+    <p>{{ step.text }}</p>
+  </div>
+  <div class="rq-next-actions btn-row">
+    {%- if step.action == 'approve' and editing %}
+    <button type="submit" form="draft-{{ r.id }}" formaction="/reports/{{ r.id }}/approve" class="btn btn--primary" data-shortcut="a" aria-keyshortcuts="a" {{ ui.confirm_attrs("Queue this email for sending?", "Approve and send", "primary", "The worker sends it over SMTP to the address in To within a few minutes, inside the hourly rate limit.") }}>Approve and send (SMTP)<kbd class="btn-kbd" aria-hidden="true">a</kbd></button>
+    {%- elif step.action == 'mailto' and editing and r.mailto %}
+    <a class="btn btn--primary" href="{{ r.mailto }}" data-rq-mailto="draft-{{ r.id }}" data-shortcut="a" aria-keyshortcuts="a">Open in my mail client<kbd class="btn-kbd" aria-hidden="true">a</kbd></a>
+    {%- elif step.action == 'save' and editing %}
+    <button type="submit" form="draft-{{ r.id }}" class="btn btn--primary" data-shortcut="a" aria-keyshortcuts="a">Save draft<kbd class="btn-kbd" aria-hidden="true">a</kbd></button>
+    {%- elif step.action == 'done' and filing %}
+    {% if r.form_url %}<a class="btn" href="{{ r.form_url }}" target="_blank" rel="noopener noreferrer" data-shortcut="f" aria-keyshortcuts="f">Open the official form<kbd class="btn-kbd" aria-hidden="true">f</kbd></a>{% endif %}
+    <form method="post" action="/reports/{{ r.id }}/sent" class="inline">
+      <input type="hidden" name="back" value="detail">
+      {{ ui.button("Mark as done", kind="primary", shortcut="a", confirm="Mark this web form as done?", confirm_ok="Mark as done",
+                   confirm_detail="Only after you submitted the official form. The domain is then recorded as reported.") }}
+    </form>
+    {%- elif step.action == 'retry' %}
+    <form method="post" action="/reports/{{ r.id }}/retry" class="inline">
+      <input type="hidden" name="back" value="detail">
+      {{ ui.button("Retry", kind="primary", shortcut="a") }}
+    </form>
+    {%- elif step.action == 'domain' %}
+    {{ ui.link_button("Open the domain page", "/domain/" ~ r.domain_id, kind="primary", shortcut="a") }}
+    {%- elif step.action == 'reject' and (editing or filing) %}
+    <button type="submit" form="reject-{{ r.id }}" class="btn btn--primary" data-shortcut="a" aria-keyshortcuts="a" {{ ui.confirm_attrs("Reject this report?", "Reject", "danger", "It will not be sent, and CyberCheck will not create it again for this domain.") }}>Reject<kbd class="btn-kbd" aria-hidden="true">a</kbd></button>
+    {%- endif %}
+    {%- if not editing and not filing %}{{ row_actions(r, back="detail", small=False) }}{% endif %}
+  </div>
+</section>
+
+<div class="grid-aside rq-detail">
+  <div class="rq-main">
+    {% if editing %}
+    {% call ui.panel("Draft", sub="edit it, then use the next step above") %}
+      {{ email_form(r, cfg, back="detail", external_primary=True, soft_max=mailto_soft_max, rows=18) }}
+      <div class="rq-item-foot">{{ reject_form(r, "detail", "Reject draft") }}</div>
+    {% endcall %}
+    {% elif filing %}
+    {% call ui.panel("Web form", sub="paste each field in order") %}
+      <div id="r{{ r.id }}">{{ manual_body(r, back="detail", external_primary=(step.action == 'done')) }}</div>
+    {% endcall %}
+    {% elif r.kind == 'email' %}
+    {% call ui.panel("Email") %}
+      {% call ui.kv() %}
+        {% call ui.kv_item("To") %}<span class="dom">{{ r.to or '-' }}</span>{% endcall %}
+        {% call ui.kv_item("Subject") %}{{ r.subject or '-' }}{% endcall %}
+      {% endcall %}
+      {% if r.to_warning %}<div class="warn">{{ r.to_warning }}</div>{% endif %}
+      <pre class="rq-pre">{{ r.body }}</pre>
+    {% endcall %}
+    {% elif r.kind == 'manual' %}
+    {% call ui.panel("Web form") %}
+      {% for f in r.fields %}<h3 class="rq-field-h">{{ f.label }}</h3><pre class="rq-pre">{{ f.value }}</pre>{% endfor %}
+      {% if r.form_url %}<p class="rq-official"><span class="rq-official-label">Official form</span> <span class="url">{{ r.form_url }}</span></p>{% endif %}
+    {% endcall %}
+    {% endif %}
+
+    {% if template_body and template_body != r.body %}
+    <details class="rq-more panel"><summary class="panel-head"><span class="panel-title">Template text (before AI or edits)</span></summary><pre class="rq-pre">{{ template_body }}</pre></details>
+    {% endif %}
+    {% if ai_body %}
+    <details class="rq-more panel"><summary class="panel-head"><span class="panel-title">AI draft as returned (before CyberCheck added the disclosure and signature)</span></summary><pre class="rq-pre">{{ ai_body }}</pre></details>
+    {% endif %}
+  </div>
+
+  <div class="rq-aside">
+    {% call ui.panel("Evidence", sub="what this report states", more_href="/domain/" ~ r.domain_id, more_label="Domain page") %}
+      {% call ui.kv() %}
+        {% call ui.kv_item("Domain") %}{{ domain_link(r) }}{% endcall %}
+        {% call ui.kv_item("Decision") %}{{ ui.status_pill(r.domain_status) }}{% endcall %}
+        {% call ui.kv_item("Combined score") %}{{ r.final_score if r.final_score is not none else '-' }}{% endcall %}
+        {% call ui.kv_item("AI verdict") %}{{ ui.verdict_pill(r.ai_verdict, r.ai_confidence) }}{% endcall %}
+        {% call ui.kv_item("Site") %}{% if r.takedown_at %}{{ ui.pill("taken down", "teal", "✓") }} <span class="muted">{{ ui.ago(r.takedown_at) }}</span>{% else %}{{ ui.live_pill(r.live_state) }}{% endif %}{% endcall %}
+        {% if ev.brand %}{% call ui.kv_item("Brand") %}{{ ev.brand }}{% endcall %}{% endif %}
+        {% if ev.asks_for %}{% call ui.kv_item("Page asks for") %}{{ ev.asks_for | join(", ") }}{% if ev.form_posts_elsewhere %} <span class="tone-amber">(form posts to another site)</span>{% endif %}{% endcall %}{% endif %}
+        {% if ev.urls %}{% call ui.kv_item("Reported URLs") %}<ul class="rq-urls">{% for u in ev.urls %}<li>{{ ui.url_text(u) }}</li>{% endfor %}</ul>{% if ev.more_urls %}<span class="muted">and {{ ev.more_urls }} more</span>{% endif %}{% endcall %}{% endif %}
+        {% if ev.registrar %}{% call ui.kv_item("Registrar") %}{{ ev.registrar }}{% endcall %}{% endif %}
+        {% if ev.hosting or ev.ips %}{% call ui.kv_item("Hosting") %}{{ ev.hosting or '' }}{% if ev.ips %} <span class="muted">{{ ev.ips | join(", ") }}</span>{% endif %}{% endcall %}{% endif %}
+        {% if ev.page_seen %}{% call ui.kv_item("Snapshot") %}{{ ev.page_seen }}{% if ev.page_profile %} <span class="muted">{{ ev.page_profile }}</span>{% endif %}{% if ev.egress_country %} <span class="muted">from {{ ev.egress_country }}</span>{% endif %}{% endcall %}{% endif %}
+      {% endcall %}
+      {% if ev.page_id %}
+      <div class="rq-shot">
+        {{ ui.shot(ev.page_id, "Screenshot of the reported page", caption="Snapshot this report uses") }}
+        <p class="rq-shot-dl"><a href="{{ r.screenshot_url }}" download>Download as JPEG</a> <span class="hint">for forms and mail clients</span></p>
+      </div>
+      {% endif %}
+    {% endcall %}
+
+    {% call ui.panel("Record") %}
+      {% call ui.kv() %}
+        {% call ui.kv_item("Channel") %}<span class="dom">{{ r.channel }}</span> <span class="muted">{{ kind_label(r.kind) }}</span>{% if r.auto %} {{ ui.pill("automatic (no reviewer)", "amber", "▲") }}{% endif %}{% endcall %}
+        {% call ui.kv_item("Created") %}{{ ui.ago(r.created_at) }} <span class="muted">{{ r.created_at | utc }}{% if r.payload.created_by %} by {{ r.payload.created_by }}{% endif %}{% if r.payload.trigger %}, trigger {{ r.payload.trigger }}{% endif %}</span>{% endcall %}
+        {% call ui.kv_item("Reviewed") %}{% if r.reviewed_by %}{{ r.reviewed_by }} <span class="muted">{{ ui.ago(r.reviewed_at) }}</span>{% else %}-{% endif %}{% endcall %}
+        {% call ui.kv_item("Sent") %}{% if r.sent_at %}{{ r.sent_at | utc }} via {{ via_label(r.sent_via) or '?' }}{% if r.sent_by %} by {{ r.sent_by }}{% endif %}{% else %}-{% endif %}{% endcall %}
+        {% call ui.kv_item("Attempts") %}{{ r.attempts }}{% if r.next_attempt_at and r.status == 'approved' %} <span class="muted">next {{ r.next_try }}, {{ r.next_attempt_at | utc }}</span>{% endif %}{% endcall %}
+        {% call ui.kv_item("Reference") %}<span class="dom">{{ r.external_id or '-' }}</span>{% if r.netcraft %} <span class="muted">{{ r.netcraft }}</span>{% endif %}{% endcall %}
+        {% call ui.kv_item("Note") %}{{ r.error or '-' }}{% endcall %}
+      {% endcall %}
+    {% endcall %}
+  </div>
+</div>
+
+{% call ui.panel("Attempts", sub="outgoing requests for this report", flush=True) %}
+  {% call ui.table(["When", "Via", "Result", ("HTTP", "num"), "Error", "Response"], label="Delivery attempts") %}
+    {% for a in attempts %}
+    <tr><td class="nowrap">{{ a.at | utc('%Y-%m-%d %H:%M:%S') }}</td><td>{{ via_label(a.via) }}</td>
+        <td>{% if a.ok %}{{ ui.pill("ok", "teal", "✓") }}{% elif a.ok is sameas false %}{{ ui.pill("failed", "red", "■") }}{% else %}{{ ui.pill("in flight", "outline", "○") }}{% endif %}</td>
+        <td class="num">{{ a.http_status or '' }}</td><td class="muted">{{ a.error or '' }}</td>
+        <td class="muted dom rq-resp">{{ a.response | tojson | truncate(400) }}</td></tr>
+    {% else %}{{ ui.empty_row(6, "No outgoing requests for this report.") }}{% endfor %}
+  {% endcall %}
+{% endcall %}
+
+<details class="rq-more panel">
+  <summary class="panel-head"><span class="panel-title">Channel response</span></summary>
+  <pre class="rq-pre dom">{{ r.response | tojson(indent=2) if r.response else '-' }}</pre>
+</details>
+<details class="rq-more panel">
+  <summary class="panel-head"><span class="panel-title">Stored data</span><span class="panel-sub">the report's payload, without the body</span></summary>
+  <pre class="rq-pre dom">{{ payload | tojson(indent=2) }}</pre>
+</details>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('reports.js') }}" defer></script>{% endblock %}

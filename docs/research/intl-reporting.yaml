@@ -1,0 +1,708 @@
+generated: "2026-11-15"
+fact_checked: "2026-11-15"
+context_country: AU
+notes: >-
+  This file was fact-checked against primary sources on 2026-11-15. Entries marked
+  verified: false, or listed under uncertain, could not be confirmed from a current
+  primary source. Do not rely on them without checking first.
+
+channels:
+  - id: netcraft
+    name: Netcraft Report API v3
+    automated_ok: true
+    verified: true
+    endpoint: https://report.netcraft.com/api/v3/report/urls
+    sandbox_endpoint: https://report.netcraft.com/api/v3/test/report/urls
+    method: POST, Content-Type application/json
+    auth: >-
+      No API key. POST /report/urls declares no security, and the spec defines no
+      securitySchemes. Only the GET /tags/file, /tags/mail and /tags/url endpoints declare
+      "BearerAuth", which is undefined. The required "email" field gets the analysis result.
+      The optional "source" (UUID) applies only if Netcraft has issued one. 401 and 403 are
+      listed as possible responses, but nothing says when they occur.
+    payload_example: |
+      {
+        "email": "reports@cybercheck.example",
+        "reason": "Newly registered lookalike domain found in CT logs; impersonates an Australian brand",
+        "skip_invalid_urls": true,
+        "urls": [
+          {
+            "url": "https://parcel-redelivery.example/au/track",
+            "country": "AU",
+            "reason": "Impersonates Australia Post redelivery page and asks for card details",
+            "screenshot": {"base64": "<base64 PNG>", "ext": "png"}
+          }
+        ]
+      }
+    response_example: |
+      200 {"message": "Successfully reported", "uuid": "<32-hex submission uuid>", "invalid_urls": ["..."]}
+      400 ErrorModel (invalid or missing parameters)
+      429 "Too many urls reported. We employ rate limiting to prevent abuse and ensure availability for all users."
+    status_check: >-
+      GET https://report.netcraft.com/api/v3/submission/{uuid} returns pending or state
+      (processing | no threats | suspicious | malicious), is_archived, classification_log,
+      state_counts and submitter.email. GET /api/v3/submission/{uuid}/urls?count=1000 (with
+      page, sort, url_state and url_takedown_state filters) returns per URL: url_state
+      (processing | no threats | unavailable | malicious | rejected | suspicious),
+      url_takedown_state (not injected | not started | in progress | resolved),
+      incident_report_url, ip, country_code and url_classification_reason. The FAQ says:
+      "By default, submissions will be archived after 30 days". After that the urls endpoint
+      returns 404 "this submission has been archived". False positives go to POST
+      /api/v3/report/mistake, and issues to POST /api/v3/submission/{uuid}/report_issue.
+    rate_limits: >-
+      No numbers are published, and going over returns HTTP 429. Up to 1000 URLs per
+      submission. The site text says "Adding a small delay between requests should be
+      sufficient". The FAQ says to contact support@netcraft.com for higher volumes, and that
+      URLs may be rejected when there is "a particularly high volume of submissions on the
+      same domain", so batch by domain.
+    evidence_expected: >-
+      url (required), a per-URL reason, country (the country the site is reachable from; use
+      AU for geofenced kits) and an optional screenshot (base64; gif, png, jpg or jpeg; not
+      allowed with no_submission). tags lists only "smishing". Credited types: phishing,
+      phishing kit, fake shop, web shell and scam site URLs.
+    terms_notes: >-
+      Free. Anyone with the link, which contains the UUID only the submitter receives, can view
+      the submission page, and the API returns submitter.email, so use a dedicated role mailbox.
+      Anonymous reports get no credit. Free-mail reporters may not get result emails until they
+      have made more than one submission. Email reports to scam@netcraft.com are treated the
+      same as API reports. Netcraft's feed is used by many browsers, but it does not control
+      their blocking. No API-specific terms of service were found.
+    source:
+      - https://report.netcraft.com/api/v3
+      - https://report.netcraft.com/api/v3/api.json
+      - https://report.netcraft.com/faqs
+
+  - id: spamhaus_submission_portal
+    name: Spamhaus Threat Intel Community Submission Portal API (beta)
+    automated_ok: conditional
+    verified: partial
+    endpoint: https://submit.spamhaus.org/portal/api/v1/submissions/add/url
+    other_endpoints:
+      - POST https://submit.spamhaus.org/portal/api/v1/submissions/add/domain
+      - POST https://submit.spamhaus.org/portal/api/v1/submissions/add/ip
+      - GET https://submit.spamhaus.org/portal/api/v1/lookup/threats-types
+      - GET https://submit.spamhaus.org/portal/api/v1/submissions/list
+      - GET https://submit.spamhaus.org/portal/api/v1/submissions/count
+    method: POST, application/json
+    auth: >-
+      HTTP header "Authorization: Bearer <token>". The token is created in the portal
+      ("API Key Creation") and shown once. The free account is created by signing in with
+      LinkedIn, Google or GitHub.
+    payload_example: |
+      {"threat_type": "<code from lookup/threats-types>", "reason": "Phishing page impersonating Australia Post (max 3,999 chars)", "source": {"object": "parcel-redelivery.example/au/track"}}
+    status_check: >-
+      GET submissions/list (paginated, items up to 10000) and GET submissions/count
+      ({"total", "matched"}) cover submissions from the last 30 days. "matched" counts
+      submissions found in one or more Spamhaus datasets.
+    rate_limits: not published on the API page
+    evidence_expected: threat_type code, reason (max 3,999 characters), source.object
+    terms_notes: >-
+      The portal is labelled BETA and is free. "Any domain, URL, IP etc submitted is not
+      automatically listed in Spamhaus data sets." The terms (clause 6.3) give Spamhaus a
+      licence to "distribute in any way we wish". UNVERIFIED: (1) whether lookup/threats-types
+      has a phishing code for URLs or domains, since reading it needs a key; (2) how clause
+      7.3.1 of the terms (no bots or other automated tools) applies to API use.
+    source:
+      - https://submit.spamhaus.org/api/
+      - https://submit.spamhaus.org/faq/
+      - https://submit.spamhaus.org/terms-conditions/
+
+  - id: google_safe_browsing_report_form
+    name: Google Safe Browsing - report phishing page
+    automated_ok: false
+    verified: true
+    endpoint: https://www.google.com/safebrowsing/report_phish/
+    alt_endpoint: https://safebrowsing.google.com/safebrowsing/report_phish/
+    method: Interactive web form. No public submission API exists for non-customers.
+    auth: none (manual)
+    payload_example: "n/a (manual)"
+    status_check: None from the form. Check listing status with the Safe Browsing Lookup API (see lookups gsb_*).
+    rate_limits: n/a
+    terms_notes: >-
+      Google's docs send phishing reports to https://www.google.com/safebrowsing/report_phish/
+      and false positives to https://www.google.com/safebrowsing/report_error/. Keep this in the
+      human queue. Whether the form uses a CAPTCHA is unverified, because it renders client-side.
+    source:
+      - https://developers.google.com/safe-browsing/v4/reporting
+
+  - id: google_web_risk_submission_api
+    name: Google Cloud Web Risk Submission API
+    automated_ok: false
+    verified: true
+    endpoint: https://webrisk.googleapis.com/v1/projects/{project}/uris:submit
+    method: POST, application/json, one URL per request; returns a long-running operation
+    auth: OAuth2 bearer token on a GCP project with an existing Submission API contract
+    payload_example: |
+      {"submission": {"uri": "https://www.example.com/login.html"}}
+    status_check: Long-running operation (see Google's LRO docs). Exact polling path not re-verified.
+    rate_limits: not stated
+    eligibility_cost: >-
+      "In a formal feature freeze and closed to new orders ahead of full deprecation no later
+      than December 31, 2027". "The final date to renew existing contracts is December 31, 2026."
+      "We no longer accept new contracts or expansions." CyberCheck cannot get access.
+    evidence_expected: >-
+      Clear evidence of a policy violation, e.g. social-engineering content that "mimics a
+      legitimate online brand (brand name, logo, look and feel)" or asks for credentials.
+    terms_notes: >-
+      Page last updated 2026-11-10. The researcher's threatInfo, threatDiscovery and
+      targetedBrand field details were not re-verified and are left out here on purpose,
+      because the channel is closed.
+    source:
+      - https://docs.cloud.google.com/web-risk/docs/submission-api
+      - https://docs.cloud.google.com/web-risk/docs/reference/rest/v1/projects.uris/submit
+
+  - id: phishtank
+    name: PhishTank (Cisco Talos)
+    automated_ok: false
+    verified: true
+    endpoint: "https://phishtank.org/add_web_phish.php (login required; no submission API)"
+    method: manual web form for logged-in members
+    auth: PhishTank account (new registration disabled)
+    payload_example: n/a
+    status_check: "Lookup only: POST https://checkurl.phishtank.com/checkurl/ (see lookups phishtank_checkurl)."
+    rate_limits: >-
+      Requests per hour are limited, with higher limits for a valid app_key. Going over returns
+      HTTP 509, and limit details are in the response headers.
+    terms_notes: >-
+      The register page says "New user registration temporarily disabled." (checked 2026-11-15).
+      The FAQ says commercial and non-commercial API use is "OK", and that a "complete rewrite"
+      is planned with "No timeline".
+    source:
+      - https://phishtank.org/register.php
+      - https://phishtank.org/api_info.php
+      - https://phishtank.org/developer_info.php
+      - https://phishtank.org/faq.php
+
+  - id: apwg_ecx
+    name: APWG eCrime eXchange (eCX) API
+    automated_ok: true
+    verified: true
+    eligibility_cost: >-
+      Members only. Annual dues in USD: Premium $15,000, Sponsoring $7,500, Corporate $5,000,
+      Individual Corporate $2,500, Accredited Reporter $1,500. Apply by emailing
+      membership@apwg.org from the organisation's own email domain (webmail such as Gmail,
+      Yahoo, Protonmail, GMX and Tuta "cannot be considered"). Then come a data sharing
+      agreement, an invoice and an eCX invitation. Discounts are "sometimes" offered to
+      non-profits, academics, government, law enforcement and NGOs. Accredited Reporter,
+      Individual Corporate and Corporate members can only "View only your eCX submitted phishing
+      URL data". The Phish Data Module is for Premium and Sponsoring members only.
+    endpoint: https://ecrimex.net/api/v1/phish
+    sandbox_endpoint: https://sandbox.ecx2.ecrimex.net/api/v1/phish
+    method: POST, application/json
+    auth: 'HTTP header "Authorization: Bearer <api_key>"'
+    payload_example: |
+      {
+        "url": "https://parcel-redelivery.example/au/track",
+        "brand": "Australia Post",
+        "discoveredAt": 1794700000,
+        "status": "active",
+        "confidence": 90,
+        "ip": ["192.0.2.10"],
+        "asn": [64500]
+      }
+    status_check: >-
+      GET /phish/{id}, GET /phish/search, or GET /phish (up to 10,000 latest). There are also
+      /malicious-domain (with notes), /malicious-sms and /report-phishing modules.
+    rate_limits: not published in the OpenAPI spec
+    evidence_expected: url and confidence (required); brand, discoveredAt, status, ip[], asn[]
+    terms_notes: >-
+      OpenAPI 3.1.0, info.version 1.1.2. The default branch is main; master has the same
+      content. The inline POST /phish schema uses "discoveredAt", but the PhishPostBody
+      component names it "disc". Confirm in the sandbox. Support contact: support@ecrimex.net.
+    source:
+      - https://apwg.org/membership/
+      - https://apwg.org/ecx/
+      - https://raw.githubusercontent.com/APWG/ecx2-openapi-doc/main/ecx2-openapi.yaml
+
+  - id: apwg_public_report
+    name: APWG public reporting (email and web form)
+    automated_ok: false
+    verified: true
+    endpoint: "mailto:reportphishing@apwg.org ; https://apwg.org/submissions/report-phishing"
+    method: forward the suspected phishing email, or use the web form
+    auth: none
+    payload_example: n/a
+    status_check: none
+    rate_limits: n/a
+    terms_notes: Built for members of the public forwarding lures. Keep in the human queue.
+    source:
+      - https://apwg.org/reportphishing/
+      - https://apwg.org/submissions/report-phishing
+
+  - id: microsoft_report_unsafe_site
+    name: Microsoft Security Intelligence - Report unsafe site (SmartScreen)
+    automated_ok: false
+    verified: true
+    endpoint: https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site
+    method: >-
+      Web form. Sign in, or "Continue as a guest" at /report-unsafe-site-guest (image or audio
+      CAPTCHA). Up to 100 URLs (text box, or a .txt file under 1 MB). Threat type: Phishing, or
+      Malware or other threats. Main language of the site.
+    auth: Microsoft or corporate account optional; CAPTCHA for guests
+    payload_example: n/a
+    status_check: submission history when signed in
+    rate_limits: not published
+    terms_notes: No public API for third-party reporters. Keep in the human queue.
+    source:
+      - https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site
+      - https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site-guest
+
+  - id: microsoft_graph_url_threat_submission
+    name: Microsoft Graph urlThreatSubmission (beta)
+    automated_ok: false
+    verified: true
+    endpoint: https://graph.microsoft.com/beta/security/threatSubmission/urlThreats
+    method: POST, application/json (201 Created)
+    auth: >-
+      Entra work or school tenant. Delegated ThreatSubmission.ReadWrite, or application
+      ThreatSubmission.ReadWrite.All. Personal Microsoft accounts are not supported.
+    payload_example: |
+      {"@odata.type": "#microsoft.graph.urlThreatSubmission", "category": "phishing", "webUrl": "https://parcel-redelivery.example/au/track"}
+    status_check: the returned object has status (e.g. running) and result.detail (e.g. underInvestigation)
+    rate_limits: not stated
+    terms_notes: >-
+      Beta: "Use of these APIs in production applications is not supported." The example
+      response shows source "administrator" and a tenantId, so it is a tenant-admin tool, not a
+      third-party reporting channel. Licence requirements are unverified.
+    source:
+      - https://learn.microsoft.com/en-us/graph/api/security-urlthreatsubmission-post-urlthreats?view=graph-rest-beta
+
+  - id: cloudflare_abuse_reports_api
+    name: Cloudflare Abuse Reports API
+    automated_ok: conditional
+    verified: true
+    endpoint: https://api.cloudflare.com/client/v4/accounts/{account_id}/abuse-reports/{report_param}
+    method: POST, application/json
+    auth: >-
+      API token with "Trust and Safety Write", plus the abuse-reports entitlement. "Enterprise
+      accounts have it by default; other accounts must request access." Without it the request
+      fails with HTTP 401.
+    payload_example: |
+      {
+        "act": "abuse_phishing",
+        "name": "CyberCheck abuse desk",
+        "email": "reports@cybercheck.example",
+        "email2": "reports@cybercheck.example",
+        "urls": "https://parcel-redelivery.example/au/track\nhttps://parcel-redelivery.example/au/pay",
+        "justification": "Phishing page impersonating Australia Post; collects card details. Geofenced: visible only from Australian IPs with a mobile user agent.",
+        "host_notification": "send",
+        "owner_notification": "send-anon",
+        "reported_country": "AU",
+        "reported_user_agent": "Mozilla/5.0 (iPhone; ...)",
+        "original_work": "https://auspost.com.au/"
+      }
+    response_example: '{"abuse_rand": "<report id>", "request": {"act": "abuse_phishing"}, "result": "success"}'
+    status_check: >-
+      GET /accounts/{account_id}/abuse-reports/submitted, /abuse-reports/submitted/{report_id}
+      and /abuse-reports/submitted/{report_id}/emails. denial_reason values: unable_to_confirm,
+      incomplete_report, not_on_cloudflare, duplicate_report, content_removed,
+      report_details_mismatch, no_abuse_found, missing_original_work, direct_url_required,
+      wrong_report_category, content_unavailable, law_enforcement_referral_required,
+      domain_dispute_process_required.
+    rate_limits: not stated on the API page
+    evidence_expected: >-
+      Required for abuse_phishing: email, email2, name (max 255), urls (max 250, unique, same
+      hostname, newline-separated), justification (20 to 5000 characters: access details and
+      steps to view the content), host_notification and owner_notification (send or send-anon;
+      "none" is not accepted for phishing). Optional: comments (1 to 2000), company (100),
+      original_work (255), reported_country (2 characters), reported_user_agent (255), tele (20)
+      and title (255).
+    terms_notes: >-
+      name, urls, email, company and tele "may be released by Cloudflare to third parties such as
+      the Lumen Database". Use owner_notification "send-anon". UNVERIFIED: the accepted values of
+      the {report_param} path segment (documented only as "The report type for submitted
+      reports"; presumably the same as act).
+    source:
+      - https://developers.cloudflare.com/api/resources/abuse_reports/methods/create/
+      - https://developers.cloudflare.com/api/resources/abuse_reports/
+
+  - id: cloudflare_abuse_web_form
+    name: Cloudflare public abuse form
+    automated_ok: false
+    verified: true
+    endpoint: https://abuse.cloudflare.com/
+    method: web form (returned 403 to a scripted fetch on 2026-11-15)
+    auth: none
+    payload_example: n/a
+    status_check: email from Cloudflare
+    rate_limits: n/a
+    terms_notes: The human-queue route for sites behind Cloudflare when the account is not entitled to the API.
+    source:
+      - https://developers.cloudflare.com/fundamentals/reference/report-abuse/submit-report/
+
+  - id: openphish
+    name: OpenPhish
+    automated_ok: false
+    verified: true
+    endpoint: "mailto:report@openphish.com (false positives: support@openphish.com)"
+    method: email only. The knowledge base says "We don't offer an API to determine if a URL is phishing".
+    auth: n/a
+    payload_example: n/a
+    status_check: none
+    rate_limits: n/a
+    terms_notes: >-
+      The Community feed (https://openphish.com/feed.txt, a 302 redirect to
+      https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt) updates
+      every 12 hours, is free, and is covered by the Terms of Use. The terms allow only personal
+      use, or research that "does not support your organization's business operations". They
+      forbid commercial use "including ... security operations, threat intelligence, detection,
+      enrichment, product development, automation, customer protection", and forbid making the
+      data "available to any third party". Do NOT put it into the published DNS blocklist.
+      Premium and Platinum (5-minute updates) are paid. Law enforcement may get the Premium Gov
+      feed at no cost.
+    source:
+      - https://openphish.com/
+      - https://openphish.com/phishing_feeds.html
+      - https://openphish.com/terms.html
+      - https://openphish.com/kb.html
+
+  - id: urlhaus
+    name: URLhaus (abuse.ch)
+    automated_ok: false
+    verified: true
+    endpoint: https://urlhaus.abuse.ch/api/
+    method: n/a for phishing
+    auth: Auth-Key required (free, from the abuse.ch Authentication Portal)
+    payload_example: n/a
+    status_check: n/a
+    rate_limits: abuse.ch Fair Use Principles apply
+    terms_notes: >-
+      "Phishing sites or websites that are hosting a phishing kit should not be submitted to
+      URLhaus (Phishing is not Malware)". The policy points to APWG, PhishTank or Netcraft. Use
+      URLhaus only if a site also delivers malware.
+    source:
+      - https://urlhaus.abuse.ch/api/
+
+  - id: urlscan_io
+    name: urlscan.io (optional third-party evidence, not a takedown channel)
+    automated_ok: true
+    verified: partial
+    endpoint: https://urlscan.io/api/v1/scan/
+    method: POST, application/json
+    auth: 'HTTP header "API-Key: <key>" (free account). "Unauthenticated users only receive minor quotas for API calls."'
+    payload_example: |
+      {"url": "https://parcel-redelivery.example/au/track", "visibility": "unlisted", "tags": ["phishing", "au-brand"]}
+    status_check: >-
+      GET https://urlscan.io/api/v1/result/{uuid}/ with polling and exponential backoff. Check
+      quotas with GET https://urlscan.io/api/v1/quotas. (The researcher's "10 s then every 2 s"
+      polling advice and the customagent and referer field names were not re-verified.)
+    rate_limits: >-
+      Free plan, per day: 50 private, 1,000 unlisted and 5,000 public scans, 1,000 searches and
+      10,000 result requests. Separate per-minute and per-hour windows also apply. Read the
+      X-Rate-Limit-Scope, -Action, -Window, -Limit, -Remaining, -Reset and -Reset-After headers.
+    terms_notes: >-
+      On the free plan, country selection works for public scans only (paid plans: all scans).
+      Unlisted scans are reportedly visible only to the submitter and urlscan Pro users; this
+      was not read directly (it came from a search extract). ToS (last updated 2020-07-22): a
+      licence "solely for your personal, non-commercial use", and "Commercial use ... requires
+      express written permission". Best practice is to search before scanning again and to
+      submit URLs containing personal data as Unlisted.
+    source:
+      - https://urlscan.io/pricing/
+      - https://docs.urlscan.io/pages/api-rate-limits
+      - https://docs.urlscan.io/pages/api-best-practices
+      - https://docs.urlscan.io/pages/api-intro
+      - https://urlscan.io/terms/
+
+  - id: registrar_abuse_contact_gtld
+    name: gTLD registrar abuse contact (from RDAP)
+    automated_ok: false
+    verified: true
+    endpoint: >-
+      Abuse email taken from the registry RDAP: the entity with role "registrar", then its nested
+      entity with role "abuse", then the vCard "email".
+    method: email or registrar webform
+    auth: none
+    payload_example: |
+      Subject: Phishing (DNS Abuse) report: <domain> impersonating <Australian brand>
+      Body: domain and full URLs, first-seen time (UTC) and CT log entry, a screenshot, the brand
+      impersonated and its official domain, how to reproduce (AU IP and mobile UA if cloaked),
+      resolving IPs and ASN, and the reporter's contact details. Cite RAA 3.18.1 and 3.18.2.
+    status_check: >-
+      Under RAA 3.18.1 the registrar must confirm receipt. Measure takedown by polling the RDAP
+      "status" array (RFC 8056 strings such as "client hold" and "server hold", not
+      clientHold or serverHold), plus DNS resolution and HTTP reachability.
+    rate_limits: n/a
+    terms_notes: >-
+      A human abuse desk, so it goes in the human-review queue. Escalate unresolved cases through
+      the ICANN Compliance "abuse involving a domain name" complaint form after a reasonable time.
+    source:
+      - https://itp.cdn.icann.org/en/files/accredited-registrars/registrar-accreditation-agreement-global-amendment-05apr24-en.htm
+      - https://www.icann.org/dnsabuse
+      - https://www.icann.org/compliance/complaint
+
+  - id: registrar_abuse_contact_au
+    name: .au registrar abuse contact
+    automated_ok: false
+    verified: partial
+    endpoint: >-
+      The registrar named in the .au registry data, looked up by a human at review time. Do NOT
+      look it up automatically: auDA WHOIS Policy clause 5.1(a) prohibits "use of WHOIS data to
+      support an automated electronic query process", and RDAP is part of the WHOIS service
+      (clause 2.1).
+    method: email or registrar webform
+    auth: none
+    payload_example: same evidence as the gTLD report
+    status_check: manual, or low-volume RDAP status checks only if auDA confirms they are acceptable
+    rate_limits: >-
+      auDA "will impose restrictions on the number of queries" (clause 5.2). rdap.cctld.au
+      returned HTTP 429 (Cloudflare 1015) on the first request from the test host on 2026-11-15.
+    terms_notes: >-
+      2025 Registrar Agreement clause 14.8(c) duties (confirm, investigate, mitigate on
+      actionable evidence) apply to reports received "via the DNS Abuse Contact", which is
+      nominated between auDA and the registrar in Schedule 1. Whether public reporters can rely
+      on it is unconfirmed. RDAP abuse email availability is also unconfirmed: Schedule A lists
+      the Registrar Abuse Contact Email, but clause 4.4 says all emails were removed from RDAP.
+    source:
+      - https://www.auda.org.au/au-domain-names/au-rules-and-policies/whois-policy-2025-11/
+      - https://files.auda.org.au/documents/WHOIS-Policy-June-2026.pdf
+      - https://files.auda.org.au/documents/2025-Registrar-Agreement.pdf
+
+  - id: hosting_abuse_contact
+    name: Hosting / network abuse contact (from RIR RDAP)
+    automated_ok: false
+    verified: true
+    endpoint: email from the RIR RDAP entity whose roles include "abuse" (walk entities recursively); RIPEstat abuse-contact-finder as a fallback
+    method: email or provider webform
+    auth: none
+    payload_example: same evidence as the registrar report, plus the IP address, port and HTTP Host or URL
+    status_check: re-check HTTP reachability and DNS
+    rate_limits: n/a
+    terms_notes: Human queue. Abuse contacts in RIR data can be wrong or missing.
+    source:
+      - https://stat.ripe.net/docs/data-api/api-endpoints/abuse-contact-finder
+      - https://data.iana.org/rdap/ipv4.json
+
+lookups:
+  - id: rdap_bootstrap_dns
+    url: https://data.iana.org/rdap/dns.json
+    verified: true
+    notes: >-
+      RFC 9224 format: services is a list of [[tlds], [base_urls]]. Publication was
+      2026-10-28T22:00:04Z with 592 services. Append "domain/<name>". Examples: com ->
+      https://rdap.verisign.com/com/v1/ ; au -> https://rdap.cctld.au/rdap/ ; top ->
+      https://rdap.zdnsgtld.com/top/ ; xyz -> https://rdap.centralnic.com/xyz/ ; shop ->
+      https://rdap.gmoregistry.net/rdap/ ; cc -> https://tld-rdap.verisign.com/cc/v1/ .
+      NOT present on 2026-11-15: io, co, me, ws, nz. Cache the file and refresh it daily.
+  - id: whois_fallback_missing_tlds
+    url: "port 43: whois.nic.io (io), whois.registry.co (co), whois.nic.me (me)"
+    verified: true
+    notes: >-
+      WHOIS servers taken from IANA root WHOIS (whois.iana.org) on 2026-11-15. rdap.org returns
+      404 for these TLDs, because it only knows IANA-registered RDAP servers. Each registry's
+      WHOIS terms were not reviewed.
+  - id: rdap_bootstrap_ipv4
+    url: https://data.iana.org/rdap/ipv4.json
+    verified: true
+    notes: >-
+      The file contains both http and https bases; use https only:
+      https://rdap.afrinic.net/rdap/ , https://rdap.apnic.net/ , https://rdap.arin.net/registry/ ,
+      https://rdap.db.ripe.net/ , https://rdap.lacnic.net/rdap/ . Query <base>ip/<address>.
+  - id: rdap_bootstrap_ipv6
+    url: https://data.iana.org/rdap/ipv6.json
+    verified: false
+    notes: Expected to hold the same RIR bases (the content was not re-checked). Query <base>ip/<v6 address>.
+  - id: rdap_bootstrap_asn
+    url: https://data.iana.org/rdap/asn.json
+    verified: false
+    notes: ASN ranges mapped to RIRs (the content was not re-checked). Query <base>autnum/<asn>.
+  - id: rdap_bootstrap_object_tags
+    url: https://data.iana.org/rdap/object-tags.json
+    verified: true
+    notes: Published 2026-10-10. Maps entity handle suffix tags (e.g. ARIN) to RDAP servers.
+  - id: iana_registrar_ids
+    url: https://www.iana.org/assignments/registrar-ids/registrar-ids-1.csv
+    verified: true
+    notes: >-
+      Columns: ID, Registrar Name, Status, RDAP Base URL. Example row:
+      292,MarkMonitor Inc.,Accredited,https://rdap.markmonitor.com/rdap/
+  - id: rdap_domain_registrar_abuse
+    url: "<dns.json base>domain/<name>  (Accept: application/rdap+json)"
+    verified: true
+    notes: >-
+      Live on rdap.verisign.com (google.com): the entity with roles [registrar] had handle "292"
+      and publicIds [{type "IANA Registrar ID", identifier "292"}], and its nested entity with
+      roles [abuse] had a vCard email abusecomplaints@markmonitor.com. The status values were
+      RFC 8056 strings such as "client delete prohibited". Record status (e.g. "client hold",
+      "server hold") and events to time takedowns.
+  - id: rdap_ip_abuse
+    url: "<ipv4/ipv6.json base>ip/<address>"
+    verified: true
+    notes: >-
+      Walk entities recursively for the "abuse" role. Live checks: APNIC 1.1.1.1 had a top-level
+      entity IRT-APNICRANDNET-AU with roles [abuse] and email helpdesk@apnic.net. ARIN 8.8.8.8 had
+      registrant GOGL with a nested ABUSE5250-ARIN [abuse] entity, email network-abuse@google.com.
+  - id: rdap_org_redirector
+    url: https://rdap.org/domain/{name}
+    verified: true
+    notes: >-
+      A redirector run by one person (Gavin Brown) "in my own time and at my own cost". Cloudflare
+      limits it to 10 requests per 10 seconds (429), with 403 for abuse. It only knows
+      IANA-registered servers, so it returns 404 for io, co and me. Use it as a fallback only.
+  - id: au_rdap
+    url: https://rdap.cctld.au/rdap/domain/{name}
+    verified: partial
+    notes: >-
+      DO NOT automate. auDA WHOIS Policy 2025-11 (v1.2, 23 June 2026) clause 5.1(a) prohibits
+      "use of WHOIS data to support an automated electronic query process", and clause 5.1(b)
+      prohibits bulk access. Clause 5.2 says query limits apply to web, port 43 and RDAP. Clause
+      4.4 says all email addresses were removed from port-43 and RDAP responses, although
+      Schedule A lists the Registrar Abuse Contact Email. The live request from the test host on
+      2026-11-15 returned HTTP 429 (Cloudflare error 1015).
+  - id: cymru_dns_origin
+    url: "<reversed IPv4 octets>.origin.asn.cymru.com TXT"
+    verified: true
+    notes: >-
+      Free with no account. Answer format: "ASN | BGP prefix | CC | registry | allocated". Live
+      results: 8.8.8.8 -> "15169 | 8.8.8.0/24 | US | arin | 2023-12-28" ; 1.1.1.1 -> "13335 |
+      1.1.1.0/24 | AU | apnic | 2011-08-11". Data comes from 50+ BGP peers and refreshes every
+      4 hours. The CC is registry data, not geolocation.
+  - id: cymru_dns_origin6
+    url: "<reversed IPv6 nibbles>.origin6.asn.cymru.com TXT"
+    verified: true
+    notes: 'Live: 2.0.0.b.0.6.8.4.1.0.0.2.origin6.asn.cymru.com -> "15169 | 2001:4860::/32 | US | arin | 2005-03-14".'
+  - id: cymru_dns_asn
+    url: "AS<asn>.asn.cymru.com TXT"
+    verified: true
+    notes: 'Live: AS15169 -> "15169 | US | arin | 2000-03-30 | GOOGLE - Google LLC, US".'
+  - id: cymru_dns_peer
+    url: "<reversed IPv4 octets>.peer.asn.cymru.com TXT"
+    verified: true
+    notes: 'Upstream peer ASNs, queried by IP. Live: 1.1.1.1 -> "2914 6461 23352 | 1.1.1.0/24 | AU | apnic | 2011-08-11".'
+  - id: cymru_whois_bulk
+    url: whois.cymru.com:43 (also v4.whois.cymru.com)
+    verified: true
+    notes: Bulk interface used with netcat. The page states "10k IPs / min" and "$0".
+  - id: ripestat_network_info
+    url: https://stat.ripe.net/data/network-info/data.json?resource={ip}&sourceapp={id}
+    verified: true
+    notes: >-
+      Returns data.asns and data.prefix (live: 1.1.1.1 -> ["13335"], 1.1.1.0/24). "No limit on
+      the amount of requests", but register with stat@ripe.net "if you plan to regularly do more
+      than 1000 requests/day". At most 8 concurrent requests per IP. RIPEstat Service Terms apply.
+  - id: ripestat_abuse_contact_finder
+    url: https://stat.ripe.net/data/abuse-contact-finder/data.json?resource={ip|prefix|asn}&sourceapp={id}
+    verified: true
+    notes: Returns data.abuse_contacts and authoritative_rir (live 1.1.1.1 -> helpdesk@apnic.net, apnic). Cross-check it with RIR RDAP.
+  - id: gsb_lookup_v4
+    url: https://safebrowsing.googleapis.com/v4/threatMatches:find?key=API_KEY
+    verified: partial
+    notes: >-
+      Deprecated: "The Safe Browsing APIs (v4) are deprecated", with no shutdown date found.
+      Non-commercial only ("not for sale or revenue generating purposes"). Free, with a default
+      quota allocated when the API is enabled. The request schema and 500-URL batch size were
+      not re-verified in this check.
+  - id: gsb_v5_hashes_search
+    url: https://safebrowsing.googleapis.com/v5/hashes:search?key=API_KEY&hashPrefixes=<base64 prefix>
+    verified: true
+    notes: The v5 privacy-preserving lookup. Same non-commercial terms and API key. Lists via GET /v5/hashLists:batchGet.
+  - id: gsb_v5_urls_search
+    url: https://safebrowsing.googleapis.com/v5alpha1/urls:search?key=API_KEY&urls=<url>
+    verified: true
+    notes: Alpha (v5alpha1). "Clients MUST NOT send more than 50 URLs."
+  - id: gsb_terms_for_blocklist
+    url: https://developers.google.com/safe-browsing/terms
+    verified: true
+    notes: >-
+      Terms last modified 2025-11-20. No commercial use without a separate agreement. Do not
+      treat a URL from Google's list as unsafe ("such as by showing users a warning about the
+      site or blocking access to it") unless the data was updated "within the past thirty
+      minutes". The attribution line "Advisory provided by Google" is required by the
+      Appropriate Usage page
+      (https://developers.google.com/safe-browsing/reference/Appropriate.Usage). Do NOT copy
+      Safe Browsing hits into the published DNS blocklist; use them only as a measurement signal.
+  - id: web_risk_lookup
+    url: https://webrisk.googleapis.com/v1/uris:search
+    verified: true
+    notes: >-
+      The commercial alternative. uris.search is free for 0 to 100,000 calls a month, then $0.50
+      per 1,000. threatLists.computeDiff is free, but calling it "changes the pricing of
+      uris.search calls to the pricing of hashes.search calls": uris.search to confirm threats
+      then costs $50.00 per 1,000.
+  - id: phishtank_checkurl
+    url: https://checkurl.phishtank.com/checkurl/
+    verified: true
+    notes: >-
+      POST fields: url (urlencoded or base64), format (xml | php | json) and app_key (optional;
+      much lower limits without it, and new keys cannot be obtained while registration is
+      disabled). A descriptive User-Agent such as "phishtank/[username]" is required. Over the
+      limit returns HTTP 509. Dumps: https://data.phishtank.com/data/online-valid.{xml,csv,json}[.gz|.bz2];
+      without a key, "a few downloads per day".
+  - id: urlscan_search
+    url: https://urlscan.io/api/v1/search/?q=domain:<domain>
+    verified: partial
+    notes: The free plan allows 1,000 searches a day. Search before scanning again. Search scope on the free plan (public scans only) was not re-verified.
+
+obligations:
+  - id: icann_raa_3_18_2024
+    applies_to: ICANN-accredited registrars (gTLDs)
+    effective: "2024-04-05 (2024 Amendment Effective Date)"
+    verified: true
+    summary: >-
+      3.18.1: keep an abuse contact and publish an email address or webform on, or readily
+      accessible from, the home page. Confirm receipt to the reporter, and take "reasonable and
+      prompt steps to investigate". DNS Abuse means malware, botnets, phishing, pharming, and spam
+      used to deliver them. 3.18.2: with actionable evidence, "promptly take the appropriate
+      mitigation action(s)". 3.18.3: a 24/7 contact for reports of Illegal Activity. 3.18.4:
+      publish the procedures and keep records for the shorter of 2 years or the legal maximum.
+    source: https://itp.cdn.icann.org/en/files/accredited-registrars/registrar-accreditation-agreement-global-amendment-05apr24-en.htm
+  - id: icann_registry_spec6_s4
+    applies_to: gTLD registry operators
+    effective: "2024-04-05"
+    verified: true
+    summary: >-
+      The 2024 amendments also oblige registry operators to mitigate well-evidenced DNS Abuse
+      (Base Registry Agreement Specification 6, Section 4). To escalate, report to the
+      registrar first, wait "a reasonable time", then use the ICANN "abuse involving a domain
+      name" complaint form. ICANN publishes monthly DNS Abuse enforcement reports.
+    source:
+      - https://www.icann.org/dnsabuse
+      - https://www.icann.org/compliance/complaint
+  - id: icann_rdap
+    applies_to: gTLD registries and registrars
+    verified: partial
+    summary: >-
+      RDAP is the definitive source of gTLD registration data "As of 28 January 2025" (verified).
+      The researcher's claims that RDAP Response Profile v2.2 makes an abuse entity with tel and
+      email mandatory, and that WHOIS exceptions exist for .com, .name and .post, were NOT
+      re-verified (the PDF could not be text-extracted, and the announcement does not mention
+      exceptions). Live .com data is consistent with the abuse-entity claim.
+    source:
+      - https://www.icann.org/en/announcements/details/icann-update-launching-rdap-sunsetting-whois-27-01-2025-en
+      - https://itp.cdn.icann.org/en/files/registry-operators/rdap-response-profile-21feb24-en.pdf
+  - id: auda_registrar_agreement_2025
+    applies_to: .au registrars (ccTLD, not under the ICANN RAA)
+    verified: true
+    summary: >-
+      2025 Registrar Agreement (dated 06 December 2024), clause 14.8. In (a), auDA and the
+      registrar nominate a "DNS Abuse Contact" in Schedule 1 as the "primary point of contact
+      between auDA and the Registrar" for malicious conduct in .au. In (c), if the registrar
+      receives a report of DNS Abuse "via the DNS Abuse Contact", it must confirm receipt to the
+      reporter and investigate, and with actionable evidence "must promptly take appropriate
+      mitigation action". DNS Abuse has the same definition as ICANN's. It is UNCONFIRMED
+      whether a public reporter can use that contact, so do not rely on citing 14.8(c).
+    source: https://files.auda.org.au/documents/2025-Registrar-Agreement.pdf
+  - id: auda_whois_policy_2025_11
+    applies_to: anyone querying .au WHOIS or RDAP
+    verified: true
+    summary: >-
+      WHOIS Policy 2025-11 (v1.1 approved 5 Feb 2026; v1.2 dated 23 June 2026). Clause 2.1: the
+      WHOIS service is provided via web, port 43 and RDAP. Clause 5.1 "strictly prohibit[s]":
+      (a) "use of WHOIS data to support an automated electronic query process" and (b) bulk
+      access. Clause 5.2: query-number restrictions on web, port 43 and RDAP. Clause 4.4: all
+      email addresses were removed from port-43 and RDAP responses.
+    source:
+      - https://www.auda.org.au/au-domain-names/au-rules-and-policies/whois-policy-2025-11/
+      - https://files.auda.org.au/documents/WHOIS-Policy-June-2026.pdf
+
+uncertain:
+  - Spamhaus portal - whether there is a phishing threat_type code for URL and domain submissions, and whether scripted API use is consistent with terms clause 7.3.1.
+  - Cloudflare - the {report_param} values, and whether the entitlement is granted to non-Enterprise accounts.
+  - Netcraft - numeric rate limits, the 401/403 triggers, and the meaning of the undefined BearerAuth on /tags/*.
+  - urlscan.io - that unlisted scans are visible to urlscan Pro users (from a search extract, not read directly); the polling cadence and the customagent and referer field names.
+  - Google Safe Browsing - the v4 shutdown date, default quota numbers, and whether the report form has a CAPTCHA.
+  - ICANN RDAP Response Profile v2.2 abuse-entity wording, and the WHOIS-sunset exceptions for .com, .name and .post.
+  - auDA - whether WHOIS Policy 2025-11 is already in force; whether .au RDAP returns a registrar abuse email; the RDAP query limit; public access to the registrar DNS Abuse Contact; the auDA complaints route under the Licensing Rules.
+  - Microsoft Graph urlThreatSubmission - licence requirements, and whether it feeds global SmartScreen.
+  - RDAP availability for the io, co and me registries outside the IANA bootstrap.
+  - The content of ipv6.json and asn.json was not re-checked in this pass.

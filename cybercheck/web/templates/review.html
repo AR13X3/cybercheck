@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% from "_row.html" import queue_row, evidence_pane %}
+{% block title %}CyberCheck · {{ title }}{% endblock %}
+{% block body_class %}page-review{% endblock %}
+{% block page_id %}review{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('triage.css') }}">{% endblock %}
+{% block body %}
+{%- set f = filters -%}
+{%- set qs_pairs = [] -%}
+{%- for k in ("tier", "brand", "live", "ai") %}{% if f[k] %}{% set _ = qs_pairs.append((k, f[k])) %}{% endif %}{% endfor -%}
+{%- if f.sort != "priority" %}{% set _ = qs_pairs.append(("sort", f.sort)) %}{% endif -%}
+{%- set qs = qs_pairs | urlencode -%}
+{%- set sub -%}
+{%- if total == 0 -%}{{ 'No domain matches these filters.' if filtered else 'Nothing waits for a decision.' }}
+{%- else -%}{{ '{:,}'.format(total) }} {{ 'domain waits' if total == 1 else 'domains wait' }} for a decision{% if high %}, {{ '{:,}'.format(high) }} high tier{% endif %}{% if filtered %} (filtered){% endif %}.{%- endif -%}
+{%- endset -%}
+{%- set brand_opts = [] -%}
+{%- for b in brands %}{% set _ = brand_opts.append((b.brand_id, b.brand_id ~ " (" ~ b.n ~ ")")) %}{% endfor -%}
+{%- if f.brand and f.brand not in brands | map(attribute="brand_id") | list %}{% set _ = brand_opts.append((f.brand, f.brand ~ " (0)")) %}{% endif -%}
+{% call ui.page_head(title, sub=sub) %}
+  <div class="head-stats" role="group" aria-label="Queue at a glance">
+    {{ ui.stat(high | compact, total | compact, "High tier", size="md", tone="red" if high else None) }}
+    {{ ui.stat(live | compact, total | compact, "Live pages", size="md") }}
+    {{ ui.stat(ai_phish | compact, total | compact, "AI phishing", size="md") }}
+  </div>
+{% endcall %}
+
+<div class="triage-bar">
+  <form method="get" action="/review" class="filterbar triage-filters" role="search" aria-label="Filter the queue">
+    {{ ui.filter_pill("Tier", "tier", [("high", "High"), ("review", "Review")], selected=f.tier, id="qf-tier", any_label="Any tier") }}
+    {{ ui.filter_pill("Brand", "brand", brand_opts, selected=f.brand, id="qf-brand", any_label="Any brand") }}
+    {{ ui.filter_pill("Live page", "live", [("yes", "Live page now"), ("no", "Not live")], selected=f.live, id="qf-live", any_label="Live or not") }}
+    {{ ui.filter_pill("AI verdict", "ai", [("phishing", "Phishing"), ("suspicious", "Suspicious"), ("benign", "Benign"), ("parked", "Parked"), ("error", "Check failed"), ("none", "Not judged yet")], selected=f.ai, id="qf-ai", any_label="Any verdict") }}
+    {{ ui.filter_pill("Order", "sort", sorts, selected=f.sort, id="qf-sort") }}
+    <span class="filterbar-actions">
+      <button type="submit" class="btn btn--sm btn--light">Apply</button>
+      {% if filtered or f.sort != "priority" %}<a class="btn btn--quiet btn--sm" href="/review">Clear</a>{% endif %}
+    </span>
+  </form>
+  <p class="triage-keys js-only" hidden>{{ ui.kbd("j") }} {{ ui.kbd("k") }} move, {{ ui.kbd("c") }} {{ ui.kbd("f") }} {{ ui.kbd("b") }} decide, {{ ui.kbd("?") }} all keys</p>
+</div>
+
+<div class="triage" data-triage data-total="{{ total }}">
+  <section class="triage-queue" aria-labelledby="queue-h">
+    <header class="queue-head">
+      <h2 class="queue-title" id="queue-h">Queue</h2>
+      <p class="queue-count" data-queue-count aria-live="polite">{% if total > rows | length %}Showing the first {{ rows | length }} of {{ '{:,}'.format(total) }}.{% elif total %}{{ '{:,}'.format(total) }} in the queue.{% endif %}</p>
+    </header>
+    {%- if rows %}
+    <div class="table-wrap queue-wrap" role="region" aria-label="Review queue" tabindex="0">
+      <table class="data queue">
+        <thead class="visually-hidden"><tr><th scope="col" class="num">Score</th><th scope="col">Domain</th><th scope="col">Seen</th></tr></thead>
+        <tbody id="queue" data-queue>
+          {%- for r in rows %}{{ queue_row(r, selected, qs) }}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {%- else %}
+    {%- if filtered %}
+    {{ ui.empty("Nothing here.", "No open domain matches these filters. Clear them to see the whole queue.", "/review", "Show the whole queue") }}
+    {%- else %}
+    {{ ui.empty("Nothing here.", "Every review and high domain has a decision. New hits from the certificate stream land here within minutes.", "/domains?status=open", "Browse open domains") }}
+    {%- endif %}
+    {%- endif %}
+  </section>
+
+  <div class="triage-pane" data-pane>
+    {%- if ev %}
+    {{ evidence_pane(ev, statuses) }}
+    {%- elif rows %}
+    <section class="evidence evidence--empty" id="evidence" tabindex="-1" aria-label="Evidence">
+      {{ ui.empty("That domain was not found.", "Pick a domain from the queue to see its evidence.") }}
+    </section>
+    {%- else %}
+    <section class="evidence evidence--empty" id="evidence" tabindex="-1" aria-label="Evidence">
+      {{ ui.empty("No domain selected.", "When the queue has domains, the evidence for the selected one shows here: screenshot, AI verdict, score and what the page asks for.") }}
+    </section>
+    {%- endif %}
+  </div>
+</div>
+<p class="triage-nojs muted">{{ ui.icon('alert', 'tone-muted') }} Without JavaScript, a domain in the queue opens its own page, where you decide and move to the next one.</p>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('triage.js') }}" defer></script>{% endblock %}
