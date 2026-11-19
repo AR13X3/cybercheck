@@ -51,6 +51,76 @@ tests can never drop tables in a real database. Keep that guard.
 CI (`.github/workflows/ci.yml`) runs both suites on every pull request. A pull request needs green CI
 before it is merged.
 
+## Developing on Windows
+
+CyberCheck runs on Linux, and CI tests it on Linux. You can still write code and run most of the unit
+tests on Windows 10 or 11. The commands below are for PowerShell.
+
+**1. Install Python 3.13 and git** with `winget` (no administrator rights needed for Python):
+
+```powershell
+winget install --id Python.Python.3.13 -e --scope user
+winget install --id Git.Git -e
+```
+
+Then **open a new terminal**. Until you do, `python` may open the Microsoft Store instead, because
+Windows ships a placeholder `python` command. Check with `py -3.13 --version`.
+
+If this is your first time using git on this computer, tell it who you are, or it will refuse to commit.
+Your commits are public, so you can use the private `noreply` address from your GitHub email settings:
+
+```powershell
+git config --global user.name "Your Name"
+git config --global user.email "12345678+username@users.noreply.github.com"
+```
+
+**2. Clone and create the virtual environment.** On Windows the venv's programs are in `.venv\Scripts\`,
+not `.venv/bin/`:
+
+```powershell
+git clone https://github.com/AR13X3/cybercheck.git
+cd cybercheck
+py -3.13 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+You do not need to activate the venv: calling `.venv\Scripts\python` directly is enough, and it avoids
+PowerShell's execution policy, which on many Windows installs blocks `.venv\Scripts\Activate.ps1`.
+
+**3. Run the unit tests** in UTF-8 mode, because Windows otherwise reads text files in a legacy code page:
+
+```powershell
+$env:PYTHONUTF8 = "1"
+.venv\Scripts\python -m pytest -q --ignore=tests/integration --continue-on-collection-errors
+```
+
+`--continue-on-collection-errors` is needed because, on native Windows, some test files currently cannot
+even be loaded, and without it pytest stops before running anything. These unit tests fail for Windows
+reasons, not because of your change:
+
+- `cybercheck/czds.py` imports `fcntl`, which only exists on Linux and macOS, so the test files that
+  import the dashboard or the CZDS code (`test_czds.py`, `test_web.py` and most `test_ui_*.py`) cannot
+  load, and a few tests elsewhere that import them fail.
+- On Windows, Python makes the socket pair inside every asyncio event loop by connecting to
+  `127.0.0.1`. The "no network in tests" guards in `test_reporting.py` and `test_enrich.py` see that as
+  a network connection and fail the test.
+- Two tests in `test_blocklist.py` check Unix file permissions, which Windows does not have.
+
+Run the tests for the module you change and compare with a run on unchanged `main`; anything that fails
+only with your change is yours to fix. CI runs the whole suite on Linux for every pull request.
+
+**4. For a full test run, and for the integration tests, use WSL 2.** Install it with `wsl --install`
+(this needs administrator rights and a restart), then follow the Linux instructions above inside the
+Ubuntu terminal. Clone the repository inside WSL (for example in `~/cybercheck`) rather than using the
+Windows copy under `/mnt/c`: it is much faster, and the shell scripts keep their Linux line endings. The
+integration tests also need Docker in WSL, either Docker Engine installed in Ubuntu or Docker Desktop
+with WSL integration turned on.
+
+**Line endings.** Git for Windows converts line endings to CRLF when it checks files out
+(`core.autocrlf=true`) and back to LF when you commit, so your commits stay correct. Files in the Windows
+checkout, such as the scripts in `scripts/`, have CRLF endings and will not run in Linux or in Docker
+from there; use the WSL clone for that.
+
 ## Code style
 
 There is no formatter or linter configuration yet; match the code around you:
