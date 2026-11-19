@@ -92,6 +92,7 @@ flowchart LR
    keeps checking them and records when they are taken down.
 
 The full design, module contracts and database layout are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+What each status, tier, score and verdict on the dashboard means: [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
 ## Safety design
 
