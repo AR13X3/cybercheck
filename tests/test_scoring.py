@@ -118,3 +118,90 @@ def test_hsbc_group_sites_abroad_are_allowlisted_but_not_argentina():
     assert wl.score_hostname("rewards.hsbc.com.ar") is not None           # not verified: still flagged
     assert wl.score_hostname("login.hsbc.com.hkmi.hk") is not None         # lookalike still flagged
     assert wl.score_hostname("n7k4p4.hsbc-online-banking.co.uk") is not None
+
+
+# ---------------------------------------------------------------------------------------------------
+# Tricky forms of the same name. Made-up .example hostnames, except where a brand's real suffix is the
+# point of the test (its official domains). Assertions are on brand, match kind and reasons, not on
+# exact points, so tuning the weights does not break them.
+
+CYRILLIC_A = "а"       # 'а', looks like Latin 'a'
+GREEK_OMICRON = "ο"    # 'ο', looks like Latin 'o'
+
+
+def puny(host):
+    """The punycode (xn--) form of a Unicode hostname, as it appears in a certificate."""
+    return host.encode("idna").decode("ascii")
+
+
+@pytest.mark.parametrize("variant", [
+    "COMMBANK-LOGIN.EXAMPLE", "commbank-login.example.", "*.commbank-login.example", " commbank-login.example ",
+])
+def test_how_a_hostname_is_written_does_not_change_its_score(variant):
+    assert score(variant) == score("commbank-login.example") is not None
+
+
+def test_uppercase_punycode_scores_like_lowercase():
+    host = puny(f"commb{CYRILLIC_A}nk-login.example")
+    assert score(host.upper()) == score(host) is not None
+
+
+@pytest.mark.parametrize("host", [
+    "WWW.COMMBANK.COM.AU.", "NetBank.Commbank.com.au", "*.commbank.com.au", " commbank.com.au ",
+])
+def test_official_domains_stay_allowlisted_however_they_are_written(host):
+    assert score(host) is None
+
+
+def test_lookalike_of_an_official_domain_is_not_allowlisted():
+    """A Cyrillic 'а' in commbank.com.au is a different domain: it must be flagged, not allowlisted."""
+    hit = WL.score_hostname(puny(f"commb{CYRILLIC_A}nk.com.au"))
+    assert hit is not None and hit.brand_id == "commbank"
+    assert hit.match["kind"] == "homoglyph"
+
+
+@pytest.mark.parametrize("host,kind", [
+    ("c0mmbank-login.example", "lookalike"),                           # zero for o
+    ("cornmbank-login.example", "lookalike"),                          # rn for m
+    (puny(f"commb{CYRILLIC_A}nk-login.example"), "homoglyph"),          # Cyrillic а
+    (puny(f"c{GREEK_OMICRON}mmbank-login.example"), "homoglyph"),       # Greek ο
+])
+def test_disguised_brand_is_found_and_scores_at_least_as_high_as_plain(host, kind):
+    hit = WL.score_hostname(host)
+    assert hit is not None and hit.brand_id == "commbank", host
+    assert hit.match["kind"] == kind
+    assert hit.score >= WL.score_hostname("commbank-login.example").score
+
+
+def test_mixed_scripts_in_one_label_is_a_reason():
+    hit = WL.score_hostname(puny(f"commb{CYRILLIC_A}nk-login.example"))
+    assert any(r["why"].startswith("mixed scripts") for r in hit.reasons)
+    assert hit.unicode_domain == f"commb{CYRILLIC_A}nk-login.example"
+
+
+@pytest.mark.parametrize("host", ["comm-bank-login.example", "c-o-m-m-b-a-n-k.example"])
+def test_hyphens_inside_the_brand_name_do_not_hide_it(host):
+    hit = WL.score_hostname(host)
+    assert hit is not None and hit.brand_id == "commbank", host
+    assert hit.match["location"] == "reg"
+
+
+def test_extra_subdomains_keep_the_match_in_the_registered_name():
+    hit = WL.score_hostname("secure.login.commbank-verify.example")
+    assert hit is not None and hit.brand_id == "commbank"
+    assert hit.match["location"] == "reg"
+    assert hit.registered_domain == "commbank-verify.example"
+
+
+def test_brand_only_in_a_subdomain_is_found_there():
+    hit = WL.score_hostname("commbank-login.account-check.example")
+    assert hit is not None and hit.brand_id == "commbank"
+    assert hit.match["location"] == "sub"
+    assert hit.registered_domain == "account-check.example"
+
+
+def test_deep_subdomain_reason_starts_at_four_labels():
+    def deep(host):
+        return any(r["why"].startswith("deep subdomain") for r in WL.score_hostname(host).reasons)
+    assert not deep("a.b.c.commbank-login.example")
+    assert deep("a.b.c.d.commbank-login.example")
