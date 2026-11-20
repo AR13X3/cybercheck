@@ -246,6 +246,13 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and th
 [code of conduct](CODE_OF_CONDUCT.md). Report security problems privately, as described in
 [SECURITY.md](SECURITY.md), not in a public issue.
 
+## Team
+
+CyberCheck is built and run by:
+
+- [@AR13X3](https://github.com/AR13X3): creator and maintainer
+- [@Dwarm-A](https://github.com/Dwarm-A): partner
+
 ## Licence
 
 Copyright (C) 2026 the CyberCheck contributors.
